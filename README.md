@@ -2,136 +2,131 @@
 
 **Transforme assistentes de Inteligência Artificial do navegador em agentes capazes de atuar nos seus projetos de software.**
 
-O **ChatAgent** é uma ferramenta desenvolvida em Python que amplia as possibilidades de uso de assistentes de IA acessados pelo navegador, permitindo que eles participem de fluxos de desenvolvimento mais agênticos (*agentic workflows*).
+O **ChatAgent** é uma ferramenta desenvolvida em Python que amplia as possibilidades de uso de assistentes de IA acessados pelo navegador (ChatGPT, Gemini e DeepSeek), permitindo que eles participem de fluxos de desenvolvimento mais agênticos (*agentic workflows*).
 
-Em vez de apenas receber respostas e copiar códigos manualmente, você pode utilizar a IA para analisar o contexto de um projeto, propor modificações, criar arquivos e diretórios e editar códigos existentes, com controle sobre as alterações aplicadas.
+Em vez de apenas receber respostas e copiar códigos manualmente, a IA pode analisar o contexto do seu projeto, **solicitar a leitura de arquivos adicionais dinamicamente**, propor modificações, criar novos arquivos e diretórios, tudo com revisão, confirmação e backup automático.
 
-A ferramenta também permite aproveitar serviços de IA que oferecem acesso gratuito pelo navegador, sem necessariamente depender de APIs pagas ou assinaturas adicionais. A disponibilidade e os limites de uso dependem de cada plataforma.
+---
 
 ## ✨ Funcionalidades
 
-- **Capacidades agênticas para IAs do navegador:** facilite a execução de tarefas de desenvolvimento em que a IA analisa o contexto e propõe ações concretas sobre os arquivos do projeto.
-- **Criação de arquivos e pastas:** permita que a IA proponha novos arquivos e diretórios para organizar ou expandir o projeto.
-- **Edição de código existente:** aplique modificações em arquivos cujo conteúdo tenha sido explicitamente enviado como contexto.
-- **Automação do fluxo de desenvolvimento:** reduza o trabalho manual de copiar respostas, criar arquivos e transferir alterações entre a IA e o projeto.
-- **Seleção de contexto:** escolha pastas e arquivos específicos para fornecer à IA as informações necessárias.
-- **Envio da estrutura do projeto:** compartilhe a organização de diretórios e os nomes dos arquivos sem enviar automaticamente o conteúdo de todos eles.
-- **Uso de diferentes assistentes:** trabalhe com as plataformas de IA compatíveis com o fluxo de automação configurado.
-- **Controle das alterações:** revise e confirme as ações propostas antes de aplicá-las.
+- **Capacidades agênticas para IAs no navegador:** a IA recebe o contexto e pode interagir solicitando leituras e propondo modificações concretas.
+- **Solicitação dinâmica de leitura (`---> Ler`):** ao enviar uma pasta, a IA recebe a estrutura dos diretórios e pode solicitar a leitura de qualquer arquivo que precise ver antes de codificar. O ChatAgent atende ao pedido e reenvia o conteúdo automaticamente em um loop interativo.
+- **Edição e criação de arquivos e pastas:** suporte a modificação de arquivos existentes no projeto, criação de novos arquivos de código e criação de estruturas de diretórios.
+- **Duas opções seguras para receber respostas longas:**
+  - **Área de Transferência (Recomendado):** basta copiar a resposta na IA (`Ctrl+C`) e pressionar `Enter` no terminal. O ChatAgent lê direto da memória, sem limites de caracteres ou truncamento do console.
+  - **Arquivo (`resposta_ia.txt`):** para códigos muito extensos, é possível colar a resposta diretamente no arquivo `resposta_ia.txt` e teclar `f` no terminal.
+- **Auditoria de prompts enviados (`ultimo_prompt_enviado.txt`):** todo prompt gerado é salvo na raiz para consulta e conferência.
+- **Modo 1 (Multi-IA):** envia o mesmo prompt simultaneamente para ChatGPT, Gemini e DeepSeek em abas separadas para comparação de soluções.
+- **Modo 2 (Edição agêntica):** fluxo focado em edição de código e criação de arquivos com a IA de sua escolha.
+- **Segurança com backup e rollback:** antes de alterar arquivos existentes, o ChatAgent cria backup em memória e solicita confirmação antes de gravar no disco.
 
-## 🚀 Benefícios
+---
 
-### 🧠 De respostas para ações
+## 🏗️ Estrutura do Projeto
 
-Assistentes convencionais geralmente entregam instruções ou trechos de código que precisam ser aplicados manualmente. Com o ChatAgent, as respostas podem seguir um fluxo estruturado de ações, permitindo criar arquivos, organizar diretórios e modificar códigos dentro do escopo autorizado.
+O ChatAgent foi modularizado seguindo as boas práticas da comunidade Python:
 
-### 💰 IA mais acessível
+```text
+ChatAgent/
+├── chatagent/
+│   ├── __init__.py         # Inicialização do pacote
+│   ├── browser.py          # Automação do Chrome, abas e envio
+│   ├── constants.py        # URLs e definições dos assistentes de IA
+│   ├── editor.py           # Parser tolerante, aplicação de ações e backups
+│   ├── files.py            # Varredura de pastas, leitura e montagem de prompts
+│   ├── modes.py            # Modos de operação (Multi-IA e Edição de Arquivos)
+│   └── ui.py               # Leitura de prompts multilinha e seleção de contexto
+├── main.py                 # Ponto de entrada da aplicação
+├── requirements.txt        # Dependências do projeto
+├── resposta_ia.txt         # Arquivo auxiliar para respostas extensas
+└── README.md               # Documentação completa
+```
 
-Aproveite as modalidades gratuitas de assistentes de IA disponíveis pelo navegador, sem necessariamente contratar uma API ou pagar por uma assinatura adicional.
+---
 
-O acesso gratuito está sujeito às regras de cada plataforma, incluindo limites de mensagens, disponibilidade de modelos e exigências de cadastro.
+## 🎯 Modos de Utilização
 
-### ⚡ Mais produtividade
+Ao iniciar o programa (`python main.py`), você escolhe entre dois modos:
 
-Automatize etapas repetitivas do desenvolvimento e concentre-se em tarefas como definir requisitos, avaliar soluções e revisar o código produzido.
+### Modo 1: Enviar mensagem para três IAs
+Abre abas dedicadas no Chrome para **ChatGPT**, **Gemini** e **DeepSeek**.
+Ao digitar seu prompt e enviar (`--env`), o ChatAgent envia a mesma mensagem para as três plataformas simultaneamente, facilitando o brainstorming e a comparação de respostas.
 
-### 📂 Contexto sob medida
+### Modo 2: Edição e criação de arquivos
+Permite selecionar uma pasta de projeto (ex: `D:\MeuProjeto`) e/ou arquivos específicos.
 
-Selecione o que a IA precisa conhecer sobre o projeto. Você pode compartilhar apenas a estrutura de uma pasta ou incluir o conteúdo completo de arquivos específicos.
+1. O ChatAgent gera a árvore de diretórios e o contexto dos arquivos.
+2. Abre a IA escolhida e envia o prompt estruturado com instruções estritas.
+3. Se a IA precisar ler arquivos adicionais da árvore, ela responde com `---> Ler caminho/arquivo`.
+4. O ChatAgent lê os arquivos solicitados e reenvia o conteúdo à IA de forma automática.
+5. Quando a IA entrega as alterações, você escolhe se deseja aplicar as ações propostas.
 
-### 🔒 Controle sobre o projeto
+---
 
-A ferramenta restringe a edição de arquivos existentes àqueles cujo conteúdo foi enviado explicitamente como contexto. As ações propostas podem ser revisadas antes de serem aplicadas.
+## 📜 Comandos Reconhecidos na Resposta da IA
 
-## 🛠️ Tecnologias
+O ChatAgent possui um analisador tolerante e inteligente que reconhece os seguintes marcadores estruturados:
 
-- **Python:** desenvolvimento da ferramenta e automação do fluxo de trabalho.
-- **Google Chrome:** acesso aos assistentes de IA pelo navegador.
-- **Inteligência Artificial generativa:** análise de contexto, geração de código e proposição de alterações.
+| Marcador | Descrição |
+|---|---|
+| `---> código:` | Inicia um bloco de código (com ou sem acento, 2 a 5 traços). |
+| `----> Modificar caminho/do/arquivo` | Modifica o arquivo especificado com o código do bloco anterior. |
+| `--> Criar caminho/do/arquivo` | Cria um novo arquivo com o código fornecido (ou cria pasta se não houver código). |
+| `---> Ler caminho/do/arquivo` | Solicita ao ChatAgent a leitura do conteúdo do arquivo na próxima iteração. |
+
+> **Nota:** o analisador remove automaticamente cercas Markdown (```` ```java ````, ```` ```python ````) e ignora placeholders genéricos ilustrativos.
+
+---
 
 ## 📋 Pré-requisitos
 
-- Python instalado.
-- Google Chrome instalado.
-- Conexão com a internet.
-- Acesso aos serviços de IA utilizados, incluindo cadastro quando exigido.
-- Dependências do projeto instaladas.
+- **Python 3.10+** instalado.
+- **Google Chrome** instalado e aberto.
+- Conta logada nos serviços de IA que desejar utilizar (ChatGPT, Gemini, DeepSeek).
 
-> O ChatAgent não garante acesso ilimitado ou gratuito a todos os modelos. As condições dependem dos serviços utilizados.
+---
 
-## ⚙️ Como funciona
-
-1. Execute o ChatAgent e escolha o modo de utilização.
-2. Selecione a pasta do projeto e/ou os arquivos que deseja disponibilizar como contexto.
-3. A ferramenta prepara as informações selecionadas e as envia ao assistente de IA pelo navegador.
-4. A IA analisa o contexto e propõe ações, como editar código, criar arquivos ou criar diretórios.
-5. O ChatAgent identifica as ações estruturadas na resposta.
-6. Revise e confirme as alterações antes de aplicá-las ao projeto.
-
-## 📂 Seleção de contexto
-
-| Seleção | Informação disponibilizada à IA |
-|---|---|
-| Somente uma pasta | Estrutura de diretórios e nomes dos arquivos |
-| Um ou mais arquivos | Conteúdo dos arquivos selecionados |
-| Uma pasta e arquivos específicos | Estrutura da pasta e conteúdo dos arquivos selecionados individualmente |
-
-**Importante:** selecionar uma pasta não significa enviar automaticamente o conteúdo de todos os seus arquivos. Para permitir a edição de um arquivo existente, selecione-o individualmente para incluir seu conteúdo no contexto.
-
-## 💻 Instalação e execução
+## 💻 Instalação e Execução
 
 ### 1. Clone o repositório
-
 ```bash
 git clone <URL_DO_REPOSITORIO>
-```
-
-### 2. Entre no diretório
-
-```bash
 cd ChatAgent
 ```
 
-### 3. Crie um ambiente virtual
-
-```bash
-python -m venv .venv
-```
-
-### 4. Ative o ambiente virtual
-
+### 2. Crie e ative um ambiente virtual
 No Windows:
-
 ```powershell
+python -m venv .venv
 .venv\Scripts\activate
 ```
 
-### 5. Instale as dependências
-
-Caso exista um arquivo `requirements.txt`:
-
+### 3. Instale as dependências
 ```bash
 pip install -r requirements.txt
 ```
 
-### 6. Execute o programa
-
+### 4. Execute o ChatAgent
 ```bash
 python main.py
 ```
 
-Substitua `main.py` pelo nome real do arquivo principal, caso seja diferente.
+---
 
-## 🔐 Segurança e boas práticas
+## 💡 Dicas de Uso
 
-- Não envie senhas, tokens, chaves privadas, certificados ou outros dados sensíveis.
-- Revise as informações compartilhadas com os serviços externos de IA.
-- Confira as ações propostas antes de aplicá-las.
-- Utilize Git ou backups para recuperar alterações quando necessário.
-- Verifique as políticas de segurança da sua organização antes de utilizar código corporativo.
+- **Para prompts multilinhas:** Digite ou cole seu texto no terminal e, ao terminar, digite `--env` em uma linha isolada para confirmar o envio.
+- **Para sair de prompts multilinhas:** Digite `sair` e, em seguida, `--env`.
+- **Respostas grandes da IA:** 
+  - **Forma padrão:** Clique no botão "Copiar" da IA e apenas dê `Enter` no terminal (não precisa colar no terminal!).
+  - **Via arquivo:** Cole o texto em `resposta_ia.txt` e digite `f` no terminal.
+- **Auditoria:** Consulte `ultimo_prompt_enviado.txt` para conferir a mensagem exata montada com árvore e arquivos.
 
-## 🎯 Objetivo
+---
 
-O ChatAgent busca aproximar os assistentes de IA do trabalho prático de desenvolvimento, permitindo que eles participem de tarefas que vão além da geração de texto.
+## 🔐 Segurança e Boas Práticas
 
-A proposta é oferecer uma maneira acessível de incorporar fluxos de trabalho agênticos ao desenvolvimento de software, combinando automação em Python, contexto seletivo e aplicação controlada de alterações em projetos.
+- **Revisão obrigatória:** O ChatAgent sempre exibe as alterações propostas e solicita sua confirmação (`s/N`) antes de gravar no disco.
+- **Backup automático:** Arquivos modificados têm seu conteúdo original preservado em memória durante a operação para rollback caso ocorra qualquer imprevisto.
+- **Dados sensíveis:** Nunca envie senhas, chaves de API, arquivos `.env` ou certificados corporativos para assistentes públicos de IA.
