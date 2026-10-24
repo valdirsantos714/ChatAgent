@@ -12,14 +12,15 @@ Em vez de apenas receber respostas e copiar códigos manualmente, a IA pode anal
 
 - **Capacidades agênticas para IAs no navegador:** a IA recebe o contexto e pode interagir solicitando leituras e propondo modificações concretas.
 - **Solicitação dinâmica de leitura (`---> Ler`):** ao enviar uma pasta, a IA recebe a estrutura dos diretórios e pode solicitar a leitura de qualquer arquivo que precise ver antes de codificar. O ChatAgent atende ao pedido e reenvia o conteúdo automaticamente em um loop interativo.
-- **Edição e criação de arquivos e pastas:** suporte a modificação de arquivos existentes no projeto, criação de novos arquivos de código e criação de estruturas de diretórios.
+- **Edição, criação e exclusão de arquivos e pastas:** suporte a modificação de arquivos existentes no projeto, criação de novos arquivos de código, criação de estruturas de diretórios e deleção segura de arquivos obsoletos (`--> Deletar`).
+- **Limpeza inteligente de cercas Markdown (```` ``` ````):** caso a IA inclua crases markdown no código retornado, o ChatAgent as remove automaticamente em qualquer tipo de arquivo (Java, Python, JS, etc.), preservando-as exclusivamente quando o destino for de fato um documento Markdown (`.md`).
 - **Duas opções seguras para receber respostas longas:**
   - **Área de Transferência (Recomendado):** basta copiar a resposta na IA (`Ctrl+C`) e pressionar `Enter` no terminal. O ChatAgent lê direto da memória, sem limites de caracteres ou truncamento do console.
   - **Arquivo (`resposta_ia.txt`):** para códigos muito extensos, é possível colar a resposta diretamente no arquivo `resposta_ia.txt` e teclar `f` no terminal.
 - **Auditoria de prompts enviados (`ultimo_prompt_enviado.txt`):** todo prompt gerado é salvo na raiz para consulta e conferência.
 - **Modo 1 (Multi-IA):** envia o mesmo prompt simultaneamente para ChatGPT, Gemini e DeepSeek em abas separadas para comparação de soluções.
-- **Modo 2 (Edição agêntica):** fluxo focado em edição de código e criação de arquivos com a IA de sua escolha.
-- **Segurança com backup e rollback:** antes de alterar arquivos existentes, o ChatAgent cria backup em memória e solicita confirmação antes de gravar no disco.
+- **Modo 2 (Edição agêntica):** fluxo focado em edição de código, criação e exclusão de arquivos com a IA de sua escolha.
+- **Segurança com backup e rollback:** antes de alterar ou deletar arquivos existentes, o ChatAgent cria backup em memória e solicita confirmação antes de gravar no disco.
 
 ---
 
@@ -73,9 +74,10 @@ O ChatAgent possui um analisador tolerante e inteligente que reconhece os seguin
 | `---> código:` | Inicia um bloco de código (com ou sem acento, 2 a 5 traços). |
 | `----> Modificar caminho/do/arquivo` | Modifica o arquivo especificado com o código do bloco anterior. |
 | `--> Criar caminho/do/arquivo` | Cria um novo arquivo com o código fornecido (ou cria pasta se não houver código). |
+| `--> Deletar caminho/do/arquivo` | Deleta o arquivo especificado (com confirmação do usuário e backup automático). |
 | `---> Ler caminho/do/arquivo` | Solicita ao ChatAgent a leitura do conteúdo do arquivo na próxima iteração. |
 
-> **Nota:** o analisador remove automaticamente cercas Markdown (```` ```java ````, ```` ```python ````) e ignora placeholders genéricos ilustrativos.
+> **Nota:** o analisador remove automaticamente cercas Markdown (```` ``` ````) de arquivos de código (como Java, Python, C#, JS) impedindo erros de sintaxe, mantendo-as apenas em arquivos Markdown (`.md`), além de ignorar placeholders genéricos ilustrativos.
 
 ---
 
