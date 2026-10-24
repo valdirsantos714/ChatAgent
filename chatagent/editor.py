@@ -14,11 +14,27 @@ def chave_caminho(caminho: str) -> str:
 
 
 PADRAO_INICIO_CODIGO = re.compile(r'^-{2,5}>\s*c[óo]digo\s*:?\s*$', re.IGNORECASE)
-PADRAO_MARCADOR = re.compile(r'^-{2,5}>\s*(Modificar|Criar|Ler)\s*:?\s+(.+?)\s*$', re.IGNORECASE)
+PADRAO_MARCADOR = re.compile(r'^-{2,5}>\s*(Modificar|Criar|Ler|Deletar|Excluir|Apagar)\s*:?\s+(.+?)\s*$', re.IGNORECASE)
 
 
-def limpar_linhas_codigo(linhas: list[str]) -> str:
-    """Remove linhas vazias extras e cercas Markdown (```) no início/fim do código."""
+def eh_arquivo_markdown(caminho: str | None) -> bool:
+    """Verifica se o caminho se refere a um arquivo Markdown (.md, .markdown)."""
+    if not caminho:
+        return False
+    nome = os.path.basename(caminho).lower()
+    ext = os.path.splitext(nome)[1].lower()
+    return ext in ('.md', '.markdown') or nome in ('readme', 'readme.md')
+
+
+def limpar_linhas_codigo(linhas: list[str], caminho: str | None = None) -> str:
+    """
+    Remove linhas vazias extras e cercas Markdown (```).
+
+    Para arquivos comuns (não Markdown), remove completamente quaisquer cercas ```
+    ou crases residuais geradas pela IA, garantindo que nunca sejam inseridas no código.
+    Para arquivos Markdown (.md), preserva os blocos ``` internos do documento,
+    removendo apenas o invólucro externo caso a IA tenha envelopado todo o conteúdo em ```markdown ... ```.
+    """
     if not linhas:
         return ""
 
@@ -34,11 +50,28 @@ def limpar_linhas_codigo(linhas: list[str]) -> str:
     if not linhas:
         return ""
 
-    # Remove cercas markdown nas pontas caso a IA tenha incluído (ex: ```java ... ```)
-    if linhas and linhas[0].strip().startswith("`"):
-        linhas = linhas[1:]
-    if linhas and linhas[-1].strip().startswith("`"):
-        linhas = linhas[:-1]
+    eh_md = eh_arquivo_markdown(caminho)
+
+    if eh_md:
+        # Para arquivos Markdown, preserva ``` internos.
+        # Remove apenas se a IA tiver envelopado toda a resposta em ```markdown ... ```
+        primeira = linhas[0].strip().lower()
+        ultima = linhas[-1].strip()
+        if (primeira.startswith('```markdown') or primeira.startswith('```md') or primeira == '```') and ultima.startswith('```') and len(linhas) >= 2:
+            linhas = linhas[1:-1]
+    else:
+        # Para arquivos que NÃO são Markdown: JAMAIS permitir linhas de cercas ```
+        novas_linhas: list[str] = []
+        for l in linhas:
+            l_strip = l.strip()
+            # Descarta linhas que iniciam cerca de markdown (ex: ```, ```java, ```python, etc.) ou formadas só de crases
+            if re.match(r'^`{3,}', l_strip) or (l_strip.startswith('`') and set(l_strip) == {'`'}):
+                continue
+            # Se a linha contiver cercas markdown residuais no final ou isoladas (ex: trecho```), remove
+            if '```' in l:
+                l = re.sub(r'\s*`{3,}\w*\s*', ' ', l).rstrip()
+            novas_linhas.append(l)
+        linhas = novas_linhas
 
     inicio = 0
     while inicio < len(linhas) and not linhas[inicio].strip():
@@ -63,7 +96,7 @@ def eh_caminho_placeholder(caminho: str) -> bool:
 
 def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
     """
-    Interpreta marcadores de modificação, criação e leitura na resposta da IA.
+    Interpreta marcadores de modificação, criação, deleção e leitura na resposta da IA.
 
     Suporta marcadores posicionados antes ou depois do código, variações de traços
     (--, ---, ----) e não falha se a IA aninhar blocos ou esquecer marcadores intermediários.
@@ -85,15 +118,21 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
             # Verifica se dentro das linhas havia algum marcador não capturado
             for idx, l in enumerate(linhas_bloco):
                 m = PADRAO_MARCADOR.match(l.strip())
-                if m and m.group(1).title() in ['Modificar', 'Criar']:
+                if m:
                     v = m.group(1).title()
+                    if v in ['Excluir', 'Apagar']:
+                        v = 'Deletar'
                     c = m.group(2).strip().strip('`"\' ')
                     if eh_caminho_placeholder(c):
                         continue
-                    conteudo_parte = limpar_linhas_codigo(linhas_bloco[:idx])
-                    t = 'modificar' if v == 'Modificar' else 'criar_arquivo'
-                    acoes.append({'tipo': t, 'caminho': c, 'conteudo': conteudo_parte})
-                    return
+                    if v in ['Modificar', 'Criar']:
+                        conteudo_parte = limpar_linhas_codigo(linhas_bloco[:idx], caminho=c)
+                        t = 'modificar' if v == 'Modificar' else 'criar_arquivo'
+                        acoes.append({'tipo': t, 'caminho': c, 'conteudo': conteudo_parte})
+                        return
+                    elif v == 'Deletar':
+                        acoes.append({'tipo': 'deletar_arquivo', 'caminho': c, 'conteudo': None})
+                        return
 
             conteudo_restante = limpar_linhas_codigo(linhas_bloco)
             if conteudo_restante:
@@ -105,13 +144,19 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
             comando_pendente = None
             return
 
-        conteudo = limpar_linhas_codigo(linhas_bloco)
-        tipo = 'modificar' if destino['verbo'] == 'Modificar' else 'criar_arquivo'
-        acoes.append({
-            'tipo': tipo,
-            'caminho': destino['caminho'],
-            'conteudo': conteudo
-        })
+        caminho_destino = destino['caminho']
+        verbo_destino = destino['verbo']
+
+        if verbo_destino == 'Deletar':
+            acoes.append({'tipo': 'deletar_arquivo', 'caminho': caminho_destino, 'conteudo': None})
+        else:
+            conteudo = limpar_linhas_codigo(linhas_bloco, caminho=caminho_destino)
+            tipo = 'modificar' if verbo_destino == 'Modificar' else 'criar_arquivo'
+            acoes.append({
+                'tipo': tipo,
+                'caminho': caminho_destino,
+                'conteudo': conteudo
+            })
         comando_pendente = None
 
     for linha in linhas:
@@ -130,6 +175,8 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
         correspondencia = PADRAO_MARCADOR.match(linha_limpa)
         if correspondencia:
             verbo = correspondencia.group(1).title()
+            if verbo in ('Excluir', 'Apagar'):
+                verbo = 'Deletar'
             caminho = correspondencia.group(2).strip().strip('`"\' ')
 
             if not caminho or eh_caminho_placeholder(caminho):
@@ -139,6 +186,27 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
 
             if verbo == 'Ler':
                 leituras.append(caminho)
+                continue
+
+            if verbo == 'Deletar':
+                if codigo_atual:
+                    fechar_bloco_codigo(linhas_codigo, comando_pendente)
+                    codigo_atual = False
+                    linhas_codigo = []
+                    comando_pendente = None
+                elif comando_pendente is not None and comando_pendente['verbo'] == 'Criar':
+                    acoes.append({
+                        'tipo': 'criar_pasta',
+                        'caminho': comando_pendente['caminho'],
+                        'conteudo': None
+                    })
+                    comando_pendente = None
+
+                acoes.append({
+                    'tipo': 'deletar_arquivo',
+                    'caminho': caminho,
+                    'conteudo': None
+                })
                 continue
 
             # Se estamos em bloco de código, o marcador finalizou este bloco (formato padrão: código depois comando)
@@ -174,6 +242,12 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
                 'caminho': comando_pendente['caminho'],
                 'conteudo': None
             })
+        elif comando_pendente['verbo'] == 'Deletar':
+            acoes.append({
+                'tipo': 'deletar_arquivo',
+                'caminho': comando_pendente['caminho'],
+                'conteudo': None
+            })
         comando_pendente = None
 
     if not acoes and not leituras:
@@ -191,6 +265,7 @@ def validar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
     ]
     destinos: set[str] = set()
     modificados: set[str] = set()
+    deletados: set[str] = set()
 
     def esta_no_escopo(caminho: str) -> bool:
         chave = chave_caminho(caminho)
@@ -232,13 +307,19 @@ def validar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
         elif acao['tipo'] == 'criar_pasta':
             if os.path.exists(caminho) and not os.path.isdir(caminho):
                 raise ValueError(f'O destino da pasta já existe como arquivo: {caminho}')
+        elif acao['tipo'] == 'deletar_arquivo':
+            if not os.path.exists(caminho):
+                raise ValueError(f'O arquivo a deletar não existe: {caminho}')
+            if os.path.isdir(caminho):
+                raise ValueError(f'O caminho a deletar é um diretório, use apenas para arquivos: {caminho}')
+            deletados.add(chave)
 
-    if not modificados and not any(a['tipo'] in ('criar_arquivo', 'criar_pasta') for a in acoes):
-        raise ValueError('A resposta não contém nenhuma alteração ou criação válida.')
+    if not modificados and not deletados and not any(a['tipo'] in ('criar_arquivo', 'criar_pasta') for a in acoes):
+        raise ValueError('A resposta não contém nenhuma alteração, criação ou deleção válida.')
 
 
 def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
-    """Cria pastas e arquivos e modifica os arquivos selecionados."""
+    """Cria pastas e arquivos, modifica e deleta os arquivos selecionados."""
     validar_acoes(acoes, file_paths)
 
     print("\nA IA solicitou as seguintes ações:")
@@ -253,11 +334,12 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
     conteudos_originais: dict[str, str] = {}
     arquivos_criados: list[str] = []
     pastas_criadas: list[str] = []
+    arquivos_deletados: list[str] = []
 
     try:
         caminhos_backup = {
             os.path.abspath(a['caminho'])
-            for a in acoes if a['tipo'] == 'modificar'
+            for a in acoes if a['tipo'] in ('modificar', 'deletar_arquivo')
         }
         for caminho in caminhos_backup:
             with open(caminho, 'r', encoding='utf-8', newline='') as f:
@@ -316,6 +398,15 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
             caminho = acao['caminho']
             with open(caminho, 'w', encoding='utf-8', newline='') as f:
                 f.write(acao['conteudo'])
+
+        # Deleta os arquivos solicitados após modificações e criações.
+        for acao in acoes:
+            if acao['tipo'] != 'deletar_arquivo':
+                continue
+            caminho = acao['caminho']
+            if os.path.isfile(caminho):
+                os.remove(caminho)
+                arquivos_deletados.append(caminho)
 
     except Exception as e:
         print(f"\n[ERRO] Falha ao executar as ações: {e}")
