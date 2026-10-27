@@ -7,7 +7,7 @@ def menu_principal() -> None:
     """Exibe o menu principal e delega para os modos disponíveis."""
     while True:
         print("\n========================================")
-        print("   CHATAGENT - v2.0.0")
+        print("   CHATAGENT - v2.1.1")
         print("========================================")
         print("1. Enviar mensagem para três IAs")
         print("2. Editar arquivos e criar pastas/arquivos com uma IA")
