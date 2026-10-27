@@ -20,3 +20,6 @@ build/
 # Arquivos temporários
 *.log
 *.tmp
+
+# Arquivos de prompt
+ultimo_prompt_enviado.txt

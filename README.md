@@ -71,11 +71,13 @@ O ChatAgent possui um analisador tolerante e inteligente que reconhece os seguin
 
 | Marcador | Descrição |
 |---|---|
-| `---> código:` | Inicia um bloco de código (com ou sem acento, 2 a 5 traços). |
+| `---> código:` | Inicia um bloco de código (com ou sem acento, 2 a 5 traços, aceita prefixos como `#`, `//`). |
 | `----> Modificar caminho/do/arquivo` | Modifica o arquivo especificado com o código do bloco anterior. |
-| `--> Criar caminho/do/arquivo` | Cria um novo arquivo com o código fornecido (ou cria pasta se não houver código). |
-| `--> Deletar caminho/do/arquivo` | Deleta o arquivo especificado (com confirmação do usuário e backup automático). |
+| `--> Criar arquivo caminho/do/arquivo` | Cria um novo arquivo com o código fornecido no bloco anterior. |
+| `--> Criar pasta caminho/da/pasta` | Cria um novo diretório (em linha isolada, sem bloco de código). |
+| `--> Deletar caminho/do/recurso` | Deleta o arquivo ou pasta especificada (pastas são deletadas recursivamente, com confirmação e backup automático). |
 | `---> Ler caminho/do/arquivo` | Solicita ao ChatAgent a leitura do conteúdo do arquivo na próxima iteração. |
+| `--> Criar caminho/do/recurso` | Cria arquivo (se houver código ou extensão) ou pasta. |
 
 > **Nota:** o analisador remove automaticamente cercas Markdown (```` ``` ````) de arquivos de código (como Java, Python, C#, JS) impedindo erros de sintaxe, mantendo-as apenas em arquivos Markdown (`.md`), além de ignorar placeholders genéricos ilustrativos.
 

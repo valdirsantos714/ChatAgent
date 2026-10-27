@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 
 import pyperclip
 
@@ -13,8 +14,43 @@ def chave_caminho(caminho: str) -> str:
     return os.path.normcase(os.path.normpath(os.path.abspath(caminho)))
 
 
-PADRAO_INICIO_CODIGO = re.compile(r'^-{2,5}>\s*c[óo]digo\s*:?\s*$', re.IGNORECASE)
-PADRAO_MARCADOR = re.compile(r'^-{2,5}>\s*(Modificar|Criar|Ler|Deletar|Excluir|Apagar)\s*:?\s+(.+?)\s*$', re.IGNORECASE)
+PADRAO_INICIO_CODIGO = re.compile(
+    r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?c[óo]digo\s*\*?:?[\\/\s\-*>]*(?:-->)?$',
+    re.IGNORECASE
+)
+PADRAO_MARCADOR = re.compile(
+    r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?(Modificar\s+arquivo|Modificar|Criar\s+arquivo|Criar\s+pasta|Criar\s+diret[óo]rio|Criar_arquivo|Criar_pasta|Criar_diret[óo]rio|Criar|Deletar\s+arquivo|Deletar\s+pasta|Deletar_arquivo|Deletar_pasta|Deletar|Excluir\s+arquivo|Excluir\s+pasta|Excluir|Apagar\s+arquivo|Apagar\s+pasta|Apagar|Remover\s+arquivo|Remover\s+pasta|Remover|Ler\s+arquivo|Ler)\s*\*?:?\s+(.+?)\s*\*?(?:-->)?$',
+    re.IGNORECASE
+)
+
+
+def normalizar_verbo(verbo_bruto: str) -> str:
+    """Normaliza o verbo extraído pelo PADRAO_MARCADOR."""
+    v = verbo_bruto.strip().lower().replace('_', ' ')
+    if 'criar pasta' in v or 'criar diretorio' in v or 'criar diretório' in v:
+        return 'Criar_Pasta'
+    if 'criar arquivo' in v:
+        return 'Criar_Arquivo'
+    if v == 'criar':
+        return 'Criar'
+    if 'modificar' in v or 'alterar' in v or 'editar' in v or 'atualizar' in v:
+        return 'Modificar'
+    if 'ler' in v:
+        return 'Ler'
+    if any(p in v for p in ['deletar pasta', 'excluir pasta', 'apagar pasta', 'remover pasta']):
+        return 'Deletar_Pasta'
+    if any(p in v for p in ['deletar arquivo', 'excluir arquivo', 'apagar arquivo', 'remover arquivo']):
+        return 'Deletar_Arquivo'
+    if any(p in v for p in ['deletar', 'excluir', 'apagar', 'remover']):
+        return 'Deletar'
+    return verbo_bruto.title()
+
+
+def eh_provavel_arquivo(caminho: str) -> bool:
+    """Verifica se o caminho se parece com um arquivo (possui extensão)."""
+    nome = os.path.basename(caminho.rstrip('\\/ '))
+    ext = os.path.splitext(nome)[1]
+    return bool(ext)
 
 
 def eh_arquivo_markdown(caminho: str | None) -> bool:
@@ -73,6 +109,17 @@ def limpar_linhas_codigo(linhas: list[str], caminho: str | None = None) -> str:
             novas_linhas.append(l)
         linhas = novas_linhas
 
+    # Remove barras invertidas (\) residuais de escape no fim das linhas
+    novas_linhas = []
+    for l in linhas:
+        # Descarta linha que contenha apenas barras invertidas
+        if set(l.strip()) == {'\\'}:
+            continue
+        # Remove barras invertidas no final da linha (escape de quebra de linha gerado pela IA)
+        l = re.sub(r'\\+\s*$', '', l)
+        novas_linhas.append(l)
+    linhas = novas_linhas
+
     inicio = 0
     while inicio < len(linhas) and not linhas[inicio].strip():
         inicio += 1
@@ -98,8 +145,14 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
     """
     Interpreta marcadores de modificação, criação, deleção e leitura na resposta da IA.
 
-    Suporta marcadores posicionados antes ou depois do código, variações de traços
-    (--, ---, ----) e não falha se a IA aninhar blocos ou esquecer marcadores intermediários.
+    Suporta:
+    - Criação explícita de arquivos: ``--> Criar arquivo <caminho>``
+    - Criação explícita de pastas: ``--> Criar pasta <caminho>``
+    - Marcador legado: ``--> Criar <caminho>`` (detecta arquivo via código/extensão ou pasta)
+    - Modificação: ``----> Modificar <caminho>``
+    - Deleção: ``--> Deletar arquivo <caminho>``, ``--> Deletar pasta <caminho>`` ou ``--> Deletar <caminho>``
+    - Leitura: ``---> Ler <caminho>``
+    - Marcadores antes ou depois do código, variações de prefixo (#, //, *, etc.).
 
     Retorna uma tupla ``(acoes, leituras)`` onde:
     - ``acoes`` é a lista de ações a aplicar nos arquivos do projeto.
@@ -110,6 +163,7 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
     leituras: list[str] = []
     codigo_atual = False
     linhas_codigo: list[str] = []
+    linhas_buffer: list[str] = []
     comando_pendente: dict | None = None
 
     def fechar_bloco_codigo(linhas_bloco: list[str], destino: dict | None) -> None:
@@ -119,19 +173,23 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
             for idx, l in enumerate(linhas_bloco):
                 m = PADRAO_MARCADOR.match(l.strip())
                 if m:
-                    v = m.group(1).title()
-                    if v in ['Excluir', 'Apagar']:
-                        v = 'Deletar'
-                    c = m.group(2).strip().strip('`"\' ')
+                    v = normalizar_verbo(m.group(1))
+                    c = m.group(2).strip().strip('`"\'* ')
+                    if c.endswith(('\\', '/')) and not re.match(r'^[a-zA-Z]:[\\/]+$', c):
+                        c = c.rstrip('\\/ ')
                     if eh_caminho_placeholder(c):
                         continue
-                    if v in ['Modificar', 'Criar']:
+                    if v == 'Criar_Pasta':
+                        acoes.append({'tipo': 'criar_pasta', 'caminho': c, 'conteudo': None})
+                        return
+                    elif v in ('Criar_Arquivo', 'Modificar', 'Criar'):
                         conteudo_parte = limpar_linhas_codigo(linhas_bloco[:idx], caminho=c)
                         t = 'modificar' if v == 'Modificar' else 'criar_arquivo'
                         acoes.append({'tipo': t, 'caminho': c, 'conteudo': conteudo_parte})
                         return
-                    elif v == 'Deletar':
-                        acoes.append({'tipo': 'deletar_arquivo', 'caminho': c, 'conteudo': None})
+                    elif v in ('Deletar', 'Deletar_Arquivo', 'Deletar_Pasta'):
+                        t = 'deletar_pasta' if v == 'Deletar_Pasta' else ('deletar_arquivo' if v == 'Deletar_Arquivo' else 'deletar')
+                        acoes.append({'tipo': t, 'caminho': c, 'conteudo': None})
                         return
 
             conteudo_restante = limpar_linhas_codigo(linhas_bloco)
@@ -147,8 +205,11 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
         caminho_destino = destino['caminho']
         verbo_destino = destino['verbo']
 
-        if verbo_destino == 'Deletar':
-            acoes.append({'tipo': 'deletar_arquivo', 'caminho': caminho_destino, 'conteudo': None})
+        if verbo_destino == 'Criar_Pasta':
+            acoes.append({'tipo': 'criar_pasta', 'caminho': caminho_destino, 'conteudo': None})
+        elif verbo_destino in ('Deletar', 'Deletar_Arquivo', 'Deletar_Pasta'):
+            t = 'deletar_pasta' if verbo_destino == 'Deletar_Pasta' else ('deletar_arquivo' if verbo_destino == 'Deletar_Arquivo' else 'deletar')
+            acoes.append({'tipo': t, 'caminho': caminho_destino, 'conteudo': None})
         else:
             conteudo = limpar_linhas_codigo(linhas_bloco, caminho=caminho_destino)
             tipo = 'modificar' if verbo_destino == 'Modificar' else 'criar_arquivo'
@@ -165,19 +226,26 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
         # Verifica se é início de bloco de código
         if PADRAO_INICIO_CODIGO.match(linha_limpa):
             if codigo_atual:
-                # A IA abriu um novo bloco antes de fechar o anterior: fecha com o que tínhamos!
                 fechar_bloco_codigo(linhas_codigo, comando_pendente)
                 linhas_codigo = []
+            elif comando_pendente is not None and comando_pendente['verbo'] == 'Criar_Pasta':
+                acoes.append({
+                    'tipo': 'criar_pasta',
+                    'caminho': comando_pendente['caminho'],
+                    'conteudo': None
+                })
+                comando_pendente = None
             codigo_atual = True
+            linhas_buffer = []
             continue
 
         # Verifica se é marcador de comando ou leitura
         correspondencia = PADRAO_MARCADOR.match(linha_limpa)
         if correspondencia:
-            verbo = correspondencia.group(1).title()
-            if verbo in ('Excluir', 'Apagar'):
-                verbo = 'Deletar'
-            caminho = correspondencia.group(2).strip().strip('`"\' ')
+            verbo = normalizar_verbo(correspondencia.group(1))
+            caminho = correspondencia.group(2).strip().strip('`"\'* ')
+            if caminho.endswith(('\\', '/')) and not re.match(r'^[a-zA-Z]:[\\/]+$', caminho):
+                caminho = caminho.rstrip('\\/ ')
 
             if not caminho or eh_caminho_placeholder(caminho):
                 if eh_caminho_placeholder(caminho):
@@ -188,13 +256,36 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
                 leituras.append(caminho)
                 continue
 
-            if verbo == 'Deletar':
+            if verbo in ('Deletar', 'Deletar_Arquivo', 'Deletar_Pasta'):
                 if codigo_atual:
                     fechar_bloco_codigo(linhas_codigo, comando_pendente)
                     codigo_atual = False
                     linhas_codigo = []
                     comando_pendente = None
-                elif comando_pendente is not None and comando_pendente['verbo'] == 'Criar':
+                elif comando_pendente is not None and comando_pendente['verbo'] == 'Criar_Pasta':
+                    acoes.append({
+                        'tipo': 'criar_pasta',
+                        'caminho': comando_pendente['caminho'],
+                        'conteudo': None
+                    })
+                    comando_pendente = None
+
+                tipo_del = 'deletar_pasta' if verbo == 'Deletar_Pasta' else ('deletar_arquivo' if verbo == 'Deletar_Arquivo' else 'deletar')
+                acoes.append({
+                    'tipo': tipo_del,
+                    'caminho': caminho,
+                    'conteudo': None
+                })
+                linhas_buffer = []
+                continue
+
+            if verbo == 'Criar_Pasta':
+                if codigo_atual:
+                    fechar_bloco_codigo(linhas_codigo, comando_pendente)
+                    codigo_atual = False
+                    linhas_codigo = []
+                    comando_pendente = None
+                elif comando_pendente is not None and comando_pendente['verbo'] == 'Criar_Pasta':
                     acoes.append({
                         'tipo': 'criar_pasta',
                         'caminho': comando_pendente['caminho'],
@@ -203,49 +294,93 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
                     comando_pendente = None
 
                 acoes.append({
-                    'tipo': 'deletar_arquivo',
+                    'tipo': 'criar_pasta',
                     'caminho': caminho,
                     'conteudo': None
                 })
+                linhas_buffer = []
                 continue
 
-            # Se estamos em bloco de código, o marcador finalizou este bloco (formato padrão: código depois comando)
+            # Para comandos que criam arquivos ou modificam (Criar_Arquivo, Modificar, Criar):
             if codigo_atual:
+                # Código veio ANTES do comando (formato padrão)
                 fechar_bloco_codigo(linhas_codigo, {'verbo': verbo, 'caminho': caminho})
                 codigo_atual = False
                 linhas_codigo = []
                 comando_pendente = None
+                linhas_buffer = []
+            elif any(l.strip() for l in linhas_buffer):
+                # A IA gerou o conteúdo mas esqueceu do marcador inicial ---> código:
+                fechar_bloco_codigo(linhas_buffer, {'verbo': verbo, 'caminho': caminho})
+                linhas_buffer = []
+                comando_pendente = None
             else:
-                # O marcador veio ANTES do código ou é criação de pasta
-                if comando_pendente is not None and comando_pendente['verbo'] == 'Criar':
+                # Comando veio ANTES do código
+                if comando_pendente is not None and comando_pendente['verbo'] == 'Criar_Pasta':
                     acoes.append({
                         'tipo': 'criar_pasta',
                         'caminho': comando_pendente['caminho'],
                         'conteudo': None
                     })
                 comando_pendente = {'verbo': verbo, 'caminho': caminho}
+                linhas_buffer = []
             continue
 
         if codigo_atual:
             linhas_codigo.append(linha)
+        else:
+            linhas_buffer.append(linha)
 
     # Final do texto: se ainda havia código aberto, fecha
     if codigo_atual:
         fechar_bloco_codigo(linhas_codigo, comando_pendente)
         comando_pendente = None
 
-    # Se sobrou comando pendente sem código (ex: criar pasta)
+    # Se sobrou comando pendente sem código explícito
     if comando_pendente is not None:
-        if comando_pendente['verbo'] == 'Criar':
+        caminho_pend = comando_pendente['caminho']
+        verbo_pend = comando_pendente['verbo']
+        if verbo_pend == 'Criar_Pasta':
             acoes.append({
                 'tipo': 'criar_pasta',
-                'caminho': comando_pendente['caminho'],
+                'caminho': caminho_pend,
                 'conteudo': None
             })
-        elif comando_pendente['verbo'] == 'Deletar':
+        elif verbo_pend == 'Criar_Arquivo':
+            conteudo = limpar_linhas_codigo(linhas_buffer, caminho=caminho_pend) if any(l.strip() for l in linhas_buffer) else ""
             acoes.append({
-                'tipo': 'deletar_arquivo',
-                'caminho': comando_pendente['caminho'],
+                'tipo': 'criar_arquivo',
+                'caminho': caminho_pend,
+                'conteudo': conteudo
+            })
+        elif verbo_pend == 'Criar':
+            # Formato legado: se há buffer de texto ou caminho parece arquivo, cria arquivo; senão pasta
+            tem_buffer = any(l.strip() for l in linhas_buffer)
+            if tem_buffer or eh_provavel_arquivo(caminho_pend):
+                conteudo = limpar_linhas_codigo(linhas_buffer, caminho=caminho_pend) if tem_buffer else ""
+                acoes.append({
+                    'tipo': 'criar_arquivo',
+                    'caminho': caminho_pend,
+                    'conteudo': conteudo
+                })
+            else:
+                acoes.append({
+                    'tipo': 'criar_pasta',
+                    'caminho': caminho_pend,
+                    'conteudo': None
+                })
+        elif verbo_pend == 'Modificar':
+            conteudo = limpar_linhas_codigo(linhas_buffer, caminho=caminho_pend) if any(l.strip() for l in linhas_buffer) else ""
+            acoes.append({
+                'tipo': 'modificar',
+                'caminho': caminho_pend,
+                'conteudo': conteudo
+            })
+        elif verbo_pend in ('Deletar', 'Deletar_Arquivo', 'Deletar_Pasta'):
+            tipo_del = 'deletar_pasta' if verbo_pend == 'Deletar_Pasta' else ('deletar_arquivo' if verbo_pend == 'Deletar_Arquivo' else 'deletar')
+            acoes.append({
+                'tipo': tipo_del,
+                'caminho': caminho_pend,
                 'conteudo': None
             })
         comando_pendente = None
@@ -300,18 +435,28 @@ def validar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
                 raise ValueError(f'O arquivo a modificar não existe: {caminho}')
             modificados.add(chave)
         elif acao['tipo'] == 'criar_arquivo':
-            if os.path.exists(caminho):
+            if os.path.isdir(caminho):
+                if not os.listdir(caminho):
+                    # Pasta vazia existente (ex: criada por erro anterior). Será substituída em aplicar_acoes
+                    pass
+                else:
+                    raise ValueError(f'O destino do arquivo já existe como uma pasta não vazia: {caminho}')
+            elif os.path.isfile(caminho):
                 # Se o arquivo já existe no escopo, trata como modificação
                 acao['tipo'] = 'modificar'
                 modificados.add(chave)
         elif acao['tipo'] == 'criar_pasta':
             if os.path.exists(caminho) and not os.path.isdir(caminho):
                 raise ValueError(f'O destino da pasta já existe como arquivo: {caminho}')
-        elif acao['tipo'] == 'deletar_arquivo':
+        elif acao['tipo'] in ('deletar', 'deletar_arquivo', 'deletar_pasta'):
             if not os.path.exists(caminho):
-                raise ValueError(f'O arquivo a deletar não existe: {caminho}')
+                raise ValueError(f'O arquivo ou pasta a deletar não existe: {caminho}')
             if os.path.isdir(caminho):
-                raise ValueError(f'O caminho a deletar é um diretório, use apenas para arquivos: {caminho}')
+                if any(chave == raiz for raiz in raizes):
+                    raise ValueError(f'Não é permitido deletar a pasta raiz do projeto: {caminho}')
+                acao['tipo'] = 'deletar_pasta'
+            else:
+                acao['tipo'] = 'deletar_arquivo'
             deletados.add(chave)
 
     if not modificados and not deletados and not any(a['tipo'] in ('criar_arquivo', 'criar_pasta') for a in acoes):
@@ -319,7 +464,7 @@ def validar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
 
 
 def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
-    """Cria pastas e arquivos, modifica e deleta os arquivos selecionados."""
+    """Cria pastas e arquivos, modifica e deleta os arquivos ou pastas selecionadas."""
     validar_acoes(acoes, file_paths)
 
     print("\nA IA solicitou as seguintes ações:")
@@ -335,15 +480,45 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
     arquivos_criados: list[str] = []
     pastas_criadas: list[str] = []
     arquivos_deletados: list[str] = []
+    pastas_deletadas: list[str] = []
+
+    backup_arquivos_deletados: dict[str, bytes] = {}
+    backup_pastas_deletadas: dict[str, dict] = {}
 
     try:
-        caminhos_backup = {
-            os.path.abspath(a['caminho'])
-            for a in acoes if a['tipo'] in ('modificar', 'deletar_arquivo')
-        }
-        for caminho in caminhos_backup:
-            with open(caminho, 'r', encoding='utf-8', newline='') as f:
-                conteudos_originais[caminho] = f.read()
+        # Backup de arquivos a serem modificados
+        for acao in acoes:
+            if acao['tipo'] == 'modificar':
+                caminho = os.path.abspath(acao['caminho'])
+                with open(caminho, 'r', encoding='utf-8', newline='') as f:
+                    conteudos_originais[caminho] = f.read()
+
+        # Backup de arquivos individuais a serem deletados (em bytes para fidelidade total)
+        for acao in acoes:
+            if acao['tipo'] == 'deletar_arquivo':
+                caminho = os.path.abspath(acao['caminho'])
+                if os.path.isfile(caminho):
+                    with open(caminho, 'rb') as f:
+                        backup_arquivos_deletados[caminho] = f.read()
+
+        # Backup de pastas a serem deletadas (estrutura de subpastas e todos os arquivos internos em memória)
+        for acao in acoes:
+            if acao['tipo'] == 'deletar_pasta':
+                caminho_pasta = os.path.abspath(acao['caminho'])
+                subpastas: list[str] = []
+                arquivos_pasta: dict[str, bytes] = {}
+                if os.path.isdir(caminho_pasta):
+                    for raiz, dirs, files in os.walk(caminho_pasta):
+                        for d in dirs:
+                            subpastas.append(os.path.abspath(os.path.join(raiz, d)))
+                        for f in files:
+                            arq = os.path.abspath(os.path.join(raiz, f))
+                            with open(arq, 'rb') as f_arq:
+                                arquivos_pasta[arq] = f_arq.read()
+                backup_pastas_deletadas[caminho_pasta] = {
+                    'subpastas': subpastas,
+                    'arquivos': arquivos_pasta,
+                }
 
         # Cria primeiro as pastas explicitamente solicitadas.
         for acao in acoes:
@@ -371,6 +546,11 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
                 continue
 
             caminho = acao['caminho']
+            # Se já existir uma pasta vazia com o mesmo nome do arquivo, remove-a antes de criar
+            if os.path.isdir(caminho) and not os.listdir(caminho):
+                print(f"[INFO] Substituindo pasta vazia existente pelo arquivo: {caminho}")
+                os.rmdir(caminho)
+
             pasta_pai = os.path.dirname(caminho)
             faltantes = []
             atual = pasta_pai
@@ -408,12 +588,22 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
                 os.remove(caminho)
                 arquivos_deletados.append(caminho)
 
+        # Deleta as pastas solicitadas recursivamente com shutil.rmtree.
+        for acao in acoes:
+            if acao['tipo'] != 'deletar_pasta':
+                continue
+            caminho = acao['caminho']
+            if os.path.isdir(caminho):
+                shutil.rmtree(caminho)
+                pastas_deletadas.append(caminho)
+
     except Exception as e:
         print(f"\n[ERRO] Falha ao executar as ações: {e}")
-        print("Tentando restaurar os arquivos existentes...")
+        print("Tentando restaurar os arquivos e pastas existentes...")
 
         erros: list[str] = []
 
+        # 1. Restaura arquivos modificados
         for caminho, conteudo in conteudos_originais.items():
             try:
                 with open(caminho, 'w', encoding='utf-8', newline='') as f:
@@ -421,6 +611,7 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
             except Exception as erro:
                 erros.append(f"{caminho}: {erro}")
 
+        # 2. Remove arquivos criados durante a operação
         for caminho in reversed(arquivos_criados):
             try:
                 if os.path.isfile(caminho):
@@ -428,6 +619,7 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
             except Exception as erro:
                 erros.append(f"{caminho}: {erro}")
 
+        # 3. Remove pastas criadas durante a operação
         for caminho in reversed(pastas_criadas):
             try:
                 if os.path.isdir(caminho) and not os.listdir(caminho):
@@ -435,12 +627,37 @@ def aplicar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
             except Exception as erro:
                 erros.append(f"{caminho}: {erro}")
 
+        # 4. Restaura arquivos deletados avulsos
+        for caminho, conteudo_bytes in backup_arquivos_deletados.items():
+            if caminho in arquivos_deletados:
+                try:
+                    pasta_pai = os.path.dirname(caminho)
+                    os.makedirs(pasta_pai, exist_ok=True)
+                    with open(caminho, 'wb') as f:
+                        f.write(conteudo_bytes)
+                except Exception as erro:
+                    erros.append(f"{caminho}: {erro}")
+
+        # 5. Restaura pastas deletadas recursivamente (recria diretórios e arquivos)
+        for caminho_pasta, dados in backup_pastas_deletadas.items():
+            if caminho_pasta in pastas_deletadas:
+                try:
+                    os.makedirs(caminho_pasta, exist_ok=True)
+                    for sub in dados['subpastas']:
+                        os.makedirs(sub, exist_ok=True)
+                    for arq_c, conteudo_bytes in dados['arquivos'].items():
+                        os.makedirs(os.path.dirname(arq_c), exist_ok=True)
+                        with open(arq_c, 'wb') as f:
+                            f.write(conteudo_bytes)
+                except Exception as erro:
+                    erros.append(f"{caminho_pasta}: {erro}")
+
         if erros:
             print("[ATENÇÃO] Algumas operações de recuperação falharam:")
             for erro in erros:
                 print(f"  - {erro}")
         else:
-            print("Os arquivos existentes foram restaurados.")
+            print("Os arquivos e pastas existentes foram restaurados com sucesso.")
 
         return
 
