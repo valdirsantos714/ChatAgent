@@ -4,7 +4,6 @@ import ctypes
 import time
 
 import pyautogui
-import pyperclip
 import pygetwindow as gw
 
 pyautogui.FAILSAFE = True
@@ -98,12 +97,21 @@ def abrir_site_em_nova_aba(site: str) -> bool:
     pyautogui.hotkey('ctrl', 't')
     time.sleep(0.7)
 
-    pyperclip.copy(site)
-    pyautogui.hotkey('ctrl', 'v')
+    # Digita a URL diretamente na barra de endereços sem usar a área de transferência
+    pyautogui.hotkey('ctrl', 'l')
+    time.sleep(0.3)
+    pyautogui.write(site, interval=0.01)
     pyautogui.press('enter')
     time.sleep(3)
 
     return True
+
+
+def _digitar_prompt(prompt: str) -> None:
+    """Digita o prompt caractere a caractere sem usar a área de transferência."""
+    # Intervalo adaptado ao tamanho do prompt para não sobrecarregar o campo
+    intervalo = 0.005 if len(prompt) > 2000 else 0.008
+    pyautogui.write(prompt, interval=intervalo)
 
 
 def enviar_para_varias_abas(prompt: str) -> bool:
@@ -111,8 +119,6 @@ def enviar_para_varias_abas(prompt: str) -> bool:
     if not focar_janela_alvo():
         print("[ERRO] Não foi possível focar o Chrome.")
         return False
-
-    pyperclip.copy(prompt)
 
     try:
         # Ctrl+9 seleciona a última aba do Chrome, mesmo quando há abas anteriores.
@@ -126,7 +132,7 @@ def enviar_para_varias_abas(prompt: str) -> bool:
                 pyautogui.hotkey("ctrl", "shift", "tab")
                 time.sleep(0.5)
 
-            pyautogui.hotkey("ctrl", "v")
+            _digitar_prompt(prompt)
             time.sleep(0.4)
             pyautogui.press("enter")
             time.sleep(0.7)
@@ -147,13 +153,11 @@ def enviar_para_uma_aba(prompt: str) -> bool:
     try:
         # A aba da IA escolhida acabou de ser aberta e permanece ativa.
         # Não usamos Ctrl+1/2/3, pois isso selecionaria abas antigas do Chrome.
-        pyperclip.copy(prompt)
-        time.sleep(0.4)
-        pyautogui.hotkey("ctrl", "v")
+        _digitar_prompt(prompt)
 
-        # Se o prompt for grande, concede mais tempo para a caixa de texto do navegador processar
-        espera_colagem = 1.2 if len(prompt) > 5000 else 0.4
-        time.sleep(espera_colagem)
+        # Pausa proporcional ao tamanho do prompt para o navegador processar
+        espera_pos_digitacao = 1.5 if len(prompt) > 5000 else 0.4
+        time.sleep(espera_pos_digitacao)
 
         pyautogui.press("enter")
         time.sleep(0.7)

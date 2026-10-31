@@ -1,0 +1,3 @@
+# Cole aqui o seu prompt grande e salve o arquivo.
+# O ChatAgent detectará este arquivo automaticamente e perguntará se deseja usá-lo.
+# Apague este comentário antes de salvar o seu prompt.
