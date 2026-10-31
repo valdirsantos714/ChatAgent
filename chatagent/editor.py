@@ -22,6 +22,11 @@ PADRAO_MARCADOR = re.compile(
     r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?(Modificar\s+arquivo|Modificar|Criar\s+arquivo|Criar\s+pasta|Criar\s+diret[óo]rio|Criar_arquivo|Criar_pasta|Criar_diret[óo]rio|Criar|Deletar\s+arquivo|Deletar\s+pasta|Deletar_arquivo|Deletar_pasta|Deletar|Excluir\s+arquivo|Excluir\s+pasta|Excluir|Apagar\s+arquivo|Apagar\s+pasta|Apagar|Remover\s+arquivo|Remover\s+pasta|Remover|Ler\s+arquivo|Ler)\s*\*?:?\s+(.+?)\s*\*?(?:-->)?$',
     re.IGNORECASE
 )
+# Detecta ---> Executar <comando shell>
+PADRAO_EXECUTAR = re.compile(
+    r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?Executar\s*\*?:?\s+(.+?)\s*(?:-->)?$',
+    re.IGNORECASE
+)
 
 
 def normalizar_verbo(verbo_bruto: str) -> str:
@@ -141,26 +146,29 @@ def eh_caminho_placeholder(caminho: str) -> bool:
     return False
 
 
-def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
+def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str], list[str]]:
     """
-    Interpreta marcadores de modificação, criação, deleção e leitura na resposta da IA.
+    Interpreta marcadores de modificação, criação, deleção, leitura e execução na resposta da IA.
 
     Suporta:
     - Criação explícita de arquivos: ``--> Criar arquivo <caminho>``
-    - Criação explícita de pastas: ``--> Criar pasta <caminho>``
+    - Criação explícita de pastas:  ``--> Criar pasta <caminho>``
     - Marcador legado: ``--> Criar <caminho>`` (detecta arquivo via código/extensão ou pasta)
     - Modificação: ``----> Modificar <caminho>``
-    - Deleção: ``--> Deletar arquivo <caminho>``, ``--> Deletar pasta <caminho>`` ou ``--> Deletar <caminho>``
+    - Deleção: ``--> Deletar arquivo/pasta <caminho>``
     - Leitura: ``---> Ler <caminho>``
+    - Execução: ``---> Executar <comando shell>``
     - Marcadores antes ou depois do código, variações de prefixo (#, //, *, etc.).
 
-    Retorna uma tupla ``(acoes, leituras)`` onde:
-    - ``acoes`` é a lista de ações a aplicar nos arquivos do projeto.
+    Retorna uma tupla ``(acoes, leituras, comandos)`` onde:
+    - ``acoes``    é a lista de ações a aplicar nos arquivos do projeto.
     - ``leituras`` é a lista de caminhos de arquivo que a IA solicitou ler.
+    - ``comandos`` é a lista de comandos shell que a IA solicitou executar.
     """
     linhas = texto_resposta.splitlines()
     acoes: list[dict] = []
     leituras: list[str] = []
+    comandos: list[str] = []
     codigo_atual = False
     linhas_codigo: list[str] = []
     linhas_buffer: list[str] = []
@@ -237,6 +245,14 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
                 comando_pendente = None
             codigo_atual = True
             linhas_buffer = []
+            continue
+
+        # Verifica se é ---> Executar <comando shell>
+        correspondencia_exec = PADRAO_EXECUTAR.match(linha_limpa)
+        if correspondencia_exec:
+            cmd = correspondencia_exec.group(1).strip().strip('`"\'* ')
+            if cmd:
+                comandos.append(cmd)
             continue
 
         # Verifica se é marcador de comando ou leitura
@@ -385,10 +401,10 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str]]:
             })
         comando_pendente = None
 
-    if not acoes and not leituras:
-        raise ValueError("Nenhuma ação ou solicitação de leitura válida foi encontrada na resposta.")
+    if not acoes and not leituras and not comandos:
+        raise ValueError("Nenhuma ação ou solicitação de leitura/execução válida foi encontrada na resposta.")
 
-    return acoes, leituras
+    return acoes, leituras, comandos
 
 
 def validar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
@@ -744,25 +760,27 @@ def obter_resposta_da_ia() -> str:
     return ""
 
 
-def processar_resposta_e_modificar_arquivos(file_paths: list[str]) -> list[str]:
+def processar_resposta_e_modificar_arquivos(file_paths: list[str]) -> tuple[list[str], list[str]]:
     """
     Lê a resposta copiada da área de transferência ou arquivo e aplica as ações validadas.
 
-    Retorna a lista de caminhos de arquivo que a IA solicitou ler via ``---> Ler``.
-    Uma lista vazia indica que não há pedidos de leitura pendentes.
+    Retorna uma tupla ``(leituras, comandos)`` onde:
+    - ``leituras``  é a lista de caminhos que a IA solicitou ler via ``---> Ler``.
+    - ``comandos``  é a lista de comandos shell que a IA solicitou executar via ``---> Executar``.
+    Listas vazias indicam que não há pedidos pendentes.
     """
     texto_resposta = obter_resposta_da_ia()
 
     if not texto_resposta or not texto_resposta.strip():
         print("Operação cancelada ou nenhuma resposta recebida.")
-        return []
+        return [], []
 
     try:
-        acoes, leituras = interpretar_resposta(texto_resposta)
+        acoes, leituras, comandos = interpretar_resposta(texto_resposta)
     except ValueError as e:
         print(f"\n[ERRO] Resposta inválida: {e}")
         print("Nenhuma ação foi executada.")
-        return []
+        return [], []
 
     if acoes:
         try:
@@ -778,4 +796,9 @@ def processar_resposta_e_modificar_arquivos(file_paths: list[str]) -> list[str]:
         for caminho in leituras:
             print(f"  - {caminho}")
 
-    return leituras
+    if comandos:
+        print("\n[EXECUÇÃO] A IA solicitou a execução dos seguintes comandos:")
+        for cmd in comandos:
+            print(f"  - {cmd}")
+
+    return leituras, comandos

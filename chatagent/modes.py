@@ -1,6 +1,7 @@
 """Modos de operação do ChatAgent."""
 
 from chatagent import browser, files as project_files
+from chatagent import runner
 from chatagent.constants import SITES_IA
 from chatagent.editor import processar_resposta_e_modificar_arquivos
 from chatagent.files import criar_prompt_edicao, criar_prompt_leitura
@@ -155,27 +156,57 @@ def modo_2_edicao_arquivos() -> None:
 
             print("-> Solicitação enviada (salva em 'ultimo_prompt_enviado.txt').")
 
-            # Loop de leitura: reenvia automaticamente enquanto a IA pedir arquivos.
+            # Determina a pasta do projeto para rodar os comandos
+            pasta_projeto = (
+                project_files.PASTAS_PROJETO_SELECIONADAS[0]
+                if project_files.PASTAS_PROJETO_SELECIONADAS
+                else "."
+            )
+
+            # Loop de resposta: trata leituras e comandos automaticamente
             while True:
-                arquivos_para_ler = processar_resposta_e_modificar_arquivos(file_paths)
+                leituras, comandos = processar_resposta_e_modificar_arquivos(file_paths)
 
-                if not arquivos_para_ler:
+                if not leituras and not comandos:
                     break
 
-                # Monta e envia o conteúdo dos arquivos solicitados.
-                try:
-                    msg_leitura = criar_prompt_leitura(arquivos_para_ler, user_prompt=user_prompt)
-                    with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
-                        f.write(msg_leitura)
-                except ValueError as e:
-                    print(f"[ERRO] {e}")
-                    break
+                # Executa os comandos solicitados pela IA
+                if comandos:
+                    for cmd in comandos:
+                        saida = runner.executar_comando(cmd, pasta_projeto)
+                        msg_cmd = runner.criar_prompt_resultado_comando(
+                            cmd, pasta_projeto, saida, user_prompt=user_prompt
+                        )
+                        with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
+                            f.write(msg_cmd)
 
-                print("\n[OK] Enviando conteúdo dos arquivos solicitados à IA...")
-                if not browser.enviar_para_uma_aba(msg_leitura):
-                    print("[ERRO] Não foi possível enviar os arquivos solicitados.")
-                    break
-                print("-> Conteúdo enviado. Aguardando nova resposta da IA...")
+                        print("\n" + "=" * 60)
+                        print("[ATENÇÃO] Antes de continuar:")
+                        print("  Clique DENTRO do campo de mensagem da IA no navegador.")
+                        print("  O ChatAgent irá digitar a saída do comando automaticamente.")
+                        print("=" * 60)
+                        input("Pressione ENTER quando estiver pronto: ")
+
+                        print("\n[OK] Enviando saída do comando à IA...")
+                        if not browser.enviar_para_uma_aba(msg_cmd):
+                            print("[ERRO] Não foi possível enviar o resultado do comando.")
+                    continue  # volta para aguardar a próxima resposta da IA
+
+                # Leitura de arquivos solicitada
+                if leituras:
+                    try:
+                        msg_leitura = criar_prompt_leitura(leituras, user_prompt=user_prompt)
+                        with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
+                            f.write(msg_leitura)
+                    except ValueError as e:
+                        print(f"[ERRO] {e}")
+                        break
+
+                    print("\n[OK] Enviando conteúdo dos arquivos solicitados à IA...")
+                    if not browser.enviar_para_uma_aba(msg_leitura):
+                        print("[ERRO] Não foi possível enviar os arquivos solicitados.")
+                        break
+                    print("-> Conteúdo enviado. Aguardando nova resposta da IA...")
 
             print("\nO que deseja fazer agora?")
             print("1. Alterar novamente os mesmos arquivos")
