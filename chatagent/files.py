@@ -135,7 +135,8 @@ def criar_prompt_edicao(file_paths: list[str], user_prompt: str) -> str:
         '15. Não misture o conteúdo de arquivos diferentes, não invente caminhos e não inclua explicações entre os blocos de código.\n'
         '16. Se precisar ler o conteúdo de um arquivo antes de continuar, escreva ---> Ler seguido do caminho absoluto completo do arquivo em uma linha separada (sem bloco de código). O ChatAgent enviará o conteúdo na próxima mensagem automaticamente. Você pode solicitar vários arquivos de uma vez usando um marcador ---> Ler por linha.\n'
         '17. NUNCA COLOQUE UM BLOCO DE COMANDO DENTRO DO OUTRO! NUNCA abra um novo ---> código: sem antes ter finalizado o anterior com seu respectivo comando (----> Modificar ou --> Criar arquivo). Comandos como --> Criar pasta, --> Deletar e ---> Ler devem ficar em linhas isoladas e não usam código.\n'
-        '18. NUNCA coloque barras invertidas de escape (\\) no início ou fim dos comandos nem no fim das linhas de texto/código (NUNCA escreva \\--> Criar arquivo, \\--> Criar pasta, código:\\ ou texto.\\). Escreva comandos e textos de forma limpa e direta.\n\n'
+        '18. NUNCA coloque barras invertidas de escape (\\) no início ou fim dos comandos nem no fim das linhas de texto/código (NUNCA escreva \\--> Criar arquivo, \\--> Criar pasta, código:\\ ou texto.\\). Escreva comandos e textos de forma limpa e direta.\n'
+        '19. Se precisar executar um comando no projeto antes de continuar (ex: compilar, rodar testes, migrações), escreva ---> Executar seguido do comando exato em uma linha separada (ex: ---> Executar mvn test). O ChatAgent rodará o comando na pasta do projeto e enviará a saída de volta para você automaticamente. Use isso quando necessário para validar suas alterações ou diagnosticar erros.\n\n'
     )
 
     estrutura = '\n\n'.join(partes_estrutura)
@@ -227,6 +228,7 @@ def criar_prompt_leitura(caminhos_solicitados: list[str], user_prompt: str = '')
         '9. NUNCA COLOQUE UM BLOCO DE COMANDO DENTRO DO OUTRO! Finalize cada arquivo completamente com seu comando (----> Modificar ou --> Criar arquivo) antes de iniciar outro ---> código:. Comandos como --> Criar pasta, --> Deletar e ---> Ler não usam bloco de código.\n'
         '10. IMPORTANTE: Use sempre o caminho absoluto real e exato do arquivo (por exemplo D:\\Projeto\\src\\Arquivo.java). NUNCA invente ou escreva textos literais como <caminho>.\n'
         '11. NUNCA use barras invertidas de escape (\\) no início ou fim dos comandos nem no fim das linhas de texto ou código.\n'
+        '12. Se precisar executar um comando no projeto antes de continuar (ex: compilar, rodar testes, migrações), escreva ---> Executar seguido do comando em uma linha separada (ex: ---> Executar mvn test). O ChatAgent rodará o comando na pasta do projeto e enviará a saída para você automaticamente.\n'
         '======================================================================'
     )
 

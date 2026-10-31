@@ -10,16 +10,18 @@ Em vez de apenas receber respostas e copiar códigos manualmente, a IA pode anal
 
 ## ✨ Funcionalidades
 
-- **Capacidades agênticas para IAs no navegador:** a IA recebe o contexto e pode interagir solicitando leituras e propondo modificações concretas.
+- **Capacidades agênticas para IAs no navegador:** a IA recebe o contexto e pode interagir solicitando leituras, executando comandos e propondo modificações concretas.
+- **Execução autônoma de comandos no subprocess (`---> Executar`):** a IA pode solicitar a execução de comandos shell diretamente na pasta do projeto (testes, compilações, migrações, scripts). O ChatAgent executa via subprocess, captura a saída completa (stdout/stderr) e reenvia à IA.
 - **Solicitação dinâmica de leitura (`---> Ler`):** ao enviar uma pasta, a IA recebe a estrutura dos diretórios e pode solicitar a leitura de qualquer arquivo que precise ver antes de codificar. O ChatAgent atende ao pedido e reenvia o conteúdo automaticamente em um loop interativo.
 - **Edição, criação e exclusão de arquivos e pastas:** suporte a modificação de arquivos existentes no projeto, criação de novos arquivos de código, criação de estruturas de diretórios e deleção segura de arquivos obsoletos (`--> Deletar`).
 - **Limpeza inteligente de cercas Markdown (```` ``` ````):** caso a IA inclua crases markdown no código retornado, o ChatAgent as remove automaticamente em qualquer tipo de arquivo (Java, Python, JS, etc.), preservando-as exclusivamente quando o destino for de fato um documento Markdown (`.md`).
-- **Duas opções seguras para receber respostas longas:**
-  - **Área de Transferência (Recomendado):** basta copiar a resposta na IA (`Ctrl+C`) e pressionar `Enter` no terminal. O ChatAgent lê direto da memória, sem limites de caracteres ou truncamento do console.
-  - **Arquivo (`resposta_ia.txt`):** para códigos muito extensos, é possível colar a resposta diretamente no arquivo `resposta_ia.txt` e teclar `f` no terminal.
+- **Envio e recebimento de textos gigantescos via arquivo ou memória:**
+  - **Prompt extenso via `prompt.txt`:** digite `f` no terminal para carregar prompts longos diretamente do arquivo `prompt.txt`.
+  - **Área de Transferência sem sobrescrever o clipboard:** copia rápida sem truncamento.
+  - **Resposta via arquivo (`resposta_ia.txt`):** para códigos extensos retornados pela IA, digite `f` para ler diretamente do arquivo.
 - **Auditoria de prompts enviados (`ultimo_prompt_enviado.txt`):** todo prompt gerado é salvo na raiz para consulta e conferência.
 - **Modo 1 (Multi-IA):** envia o mesmo prompt simultaneamente para ChatGPT, Gemini e DeepSeek em abas separadas para comparação de soluções.
-- **Modo 2 (Edição agêntica):** fluxo focado em edição de código, criação e exclusão de arquivos com a IA de sua escolha.
+- **Modo 2 (Edição agêntica):** fluxo focado em edição de código, criação, exclusão de arquivos e execução de comandos com a IA de sua escolha.
 - **Segurança com backup e rollback:** antes de alterar ou deletar arquivos existentes, o ChatAgent cria backup em memória e solicita confirmação antes de gravar no disco.
 
 ---
@@ -31,14 +33,16 @@ O ChatAgent foi modularizado seguindo as boas práticas da comunidade Python:
 ```text
 ChatAgent/
 ├── chatagent/
-│   ├── __init__.py         # Inicialização do pacote
+│   ├── __init__.py         # Inicialização do pacote (v2.2.0)
 │   ├── browser.py          # Automação do Chrome, abas e envio
 │   ├── constants.py        # URLs e definições dos assistentes de IA
 │   ├── editor.py           # Parser tolerante, aplicação de ações e backups
 │   ├── files.py            # Varredura de pastas, leitura e montagem de prompts
 │   ├── modes.py            # Modos de operação (Multi-IA e Edição de Arquivos)
+│   ├── runner.py           # Execução de comandos no subprocess para a IA
 │   └── ui.py               # Leitura de prompts multilinha e seleção de contexto
 ├── main.py                 # Ponto de entrada da aplicação
+├── prompt.txt              # Arquivo auxiliar para prompts extensos
 ├── requirements.txt        # Dependências do projeto
 ├── resposta_ia.txt         # Arquivo auxiliar para respostas extensas
 └── README.md               # Documentação completa
@@ -77,6 +81,7 @@ O ChatAgent possui um analisador tolerante e inteligente que reconhece os seguin
 | `--> Criar pasta caminho/da/pasta` | Cria um novo diretório (em linha isolada, sem bloco de código). |
 | `--> Deletar caminho/do/recurso` | Deleta o arquivo ou pasta especificada (pastas são deletadas recursivamente, com confirmação e backup automático). |
 | `---> Ler caminho/do/arquivo` | Solicita ao ChatAgent a leitura do conteúdo do arquivo na próxima iteração. |
+| `---> Executar comando shell` | Executa o comando na pasta do projeto via subprocess e reenvia a saída (stdout + stderr) à IA. |
 | `--> Criar caminho/do/recurso` | Cria arquivo (se houver código ou extensão) ou pasta. |
 
 > **Nota:** o analisador remove automaticamente cercas Markdown (```` ``` ````) de arquivos de código (como Java, Python, C#, JS) impedindo erros de sintaxe, mantendo-as apenas em arquivos Markdown (`.md`), além de ignorar placeholders genéricos ilustrativos.
