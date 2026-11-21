@@ -33,7 +33,7 @@ O ChatAgent foi modularizado seguindo as boas práticas da comunidade Python:
 ```text
 ChatAgent/
 ├── chatagent/
-│   ├── __init__.py         # Inicialização do pacote (v2.2.0)
+│   ├── __init__.py         # Inicialização do pacote
 │   ├── browser.py          # Automação do Chrome, abas e envio
 │   ├── constants.py        # URLs e definições dos assistentes de IA
 │   ├── editor.py           # Parser tolerante, aplicação de ações e backups

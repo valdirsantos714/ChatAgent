@@ -22,9 +22,9 @@ PADRAO_MARCADOR = re.compile(
     r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?(Modificar\s+arquivo|Modificar|Criar\s+arquivo|Criar\s+pasta|Criar\s+diret[óo]rio|Criar_arquivo|Criar_pasta|Criar_diret[óo]rio|Criar|Deletar\s+arquivo|Deletar\s+pasta|Deletar_arquivo|Deletar_pasta|Deletar|Excluir\s+arquivo|Excluir\s+pasta|Excluir|Apagar\s+arquivo|Apagar\s+pasta|Apagar|Remover\s+arquivo|Remover\s+pasta|Remover|Ler\s+arquivo|Ler)\s*\*?:?\s+(.+?)\s*\*?(?:-->)?$',
     re.IGNORECASE
 )
-# Detecta ---> Executar <comando shell>
+# Detecta ---> Executar <comando shell>, tolerando "comando", "script", etc.
 PADRAO_EXECUTAR = re.compile(
-    r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?Executar\s*\*?:?\s+(.+?)\s*(?:-->)?$',
+    r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?Executar(?:\s+(?:comando|script|shell))?\s*\*?:?\s+(.+?)\s*(?:-->)?$',
     re.IGNORECASE
 )
 
@@ -251,6 +251,7 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str], li
         correspondencia_exec = PADRAO_EXECUTAR.match(linha_limpa)
         if correspondencia_exec:
             cmd = correspondencia_exec.group(1).strip().strip('`"\'* ')
+            cmd = re.sub(r'^(?:comando|script|shell)\s*:\s*', '', cmd, flags=re.IGNORECASE).strip()
             if cmd:
                 comandos.append(cmd)
             continue

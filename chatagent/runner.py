@@ -51,6 +51,56 @@ def executar_comando(comando: str, pasta: str) -> str:
     return saida + rodape
 
 
+def criar_prompt_resultado_comandos(
+    resultados: list[dict],
+    pasta: str,
+    user_prompt: str = "",
+) -> str:
+    """Monta a mensagem a ser enviada à IA com o resultado de um ou mais comandos executados.
+
+    Args:
+        resultados: Lista de dicionários contendo ``{"comando": str, "saida": str}``.
+        pasta: Diretório onde os comandos foram executados.
+        user_prompt: Prompt original do usuário.
+    """
+    total = len(resultados)
+    secoes = [
+        "======================================================================",
+        "RESULTADO DA EXECUÇÃO DE COMANDOS PELO ChatAgent",
+        "======================================================================",
+        f"Diretório de trabalho: {pasta}",
+    ]
+
+    if user_prompt and user_prompt.strip():
+        secoes.append(f"Solicitação original do usuário: {user_prompt.strip()}")
+
+    secoes.append("")
+
+    for indice, item in enumerate(resultados, start=1):
+        cmd = item.get("comando", "")
+        saida_cmd = item.get("saida", "").strip()
+        prefixo = f"[Comando {indice} de {total}]" if total > 1 else "[Comando executado]"
+        secoes.extend([
+            f"{prefixo}: {cmd}",
+            "Saída (stdout + stderr):",
+            "```",
+            saida_cmd if saida_cmd else "(sem saída)",
+            "```",
+            "",
+        ])
+
+    secoes.extend([
+        "======================================================================",
+        "Com base no resultado da execução acima, continue sua análise e",
+        "responda usando os comandos obrigatórios do ChatAgent (---> código:,",
+        "----> Modificar, --> Criar arquivo, --> Criar pasta, --> Deletar,",
+        "---> Ler, ---> Executar) conforme necessário.",
+        "======================================================================",
+    ])
+
+    return "\n".join(secoes)
+
+
 def criar_prompt_resultado_comando(
     comando: str,
     pasta: str,
@@ -58,29 +108,8 @@ def criar_prompt_resultado_comando(
     user_prompt: str = "",
 ) -> str:
     """Monta a mensagem a ser enviada à IA com o resultado do comando executado."""
-    secoes = [
-        "======================================================================",
-        "RESULTADO DO COMANDO EXECUTADO PELO ChatAgent",
-        "======================================================================",
-        f"Comando executado: {comando}",
-        f"Diretório: {pasta}",
-        "",
-        "Saída do comando (stdout + stderr):",
-        "```",
-        saida.strip(),
-        "```",
-        "======================================================================",
-        "Com base nessa saída, continue sua análise e responda usando os",
-        "comandos obrigatórios do ChatAgent (---> código:, ----> Modificar,",
-        "--> Criar arquivo, --> Criar pasta, --> Deletar, ---> Ler,",
-        "---> Executar) conforme necessário.",
-        "======================================================================",
-    ]
-
-    if user_prompt and user_prompt.strip():
-        secoes.insert(
-            3,
-            f"Solicitação original do usuário: {user_prompt.strip()}",
-        )
-
-    return "\n".join(secoes)
+    return criar_prompt_resultado_comandos(
+        [{"comando": comando, "saida": saida}],
+        pasta=pasta,
+        user_prompt=user_prompt,
+    )

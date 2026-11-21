@@ -1,5 +1,7 @@
 """Modos de operação do ChatAgent."""
 
+import os
+
 from chatagent import browser, files as project_files
 from chatagent import runner
 from chatagent.constants import SITES_IA
@@ -157,11 +159,12 @@ def modo_2_edicao_arquivos() -> None:
             print("-> Solicitação enviada (salva em 'ultimo_prompt_enviado.txt').")
 
             # Determina a pasta do projeto para rodar os comandos
-            pasta_projeto = (
-                project_files.PASTAS_PROJETO_SELECIONADAS[0]
-                if project_files.PASTAS_PROJETO_SELECIONADAS
-                else "."
-            )
+            if project_files.PASTAS_PROJETO_SELECIONADAS:
+                pasta_projeto = project_files.PASTAS_PROJETO_SELECIONADAS[0]
+            elif file_paths:
+                pasta_projeto = os.path.dirname(os.path.abspath(file_paths[0]))
+            else:
+                pasta_projeto = "."
 
             # Loop de resposta: trata leituras e comandos automaticamente
             while True:
@@ -170,43 +173,48 @@ def modo_2_edicao_arquivos() -> None:
                 if not leituras and not comandos:
                     break
 
+                mensagens_retorno = []
+
                 # Executa os comandos solicitados pela IA
                 if comandos:
+                    resultados_comandos = []
                     for cmd in comandos:
                         saida = runner.executar_comando(cmd, pasta_projeto)
-                        msg_cmd = runner.criar_prompt_resultado_comando(
-                            cmd, pasta_projeto, saida, user_prompt=user_prompt
-                        )
-                        with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
-                            f.write(msg_cmd)
+                        resultados_comandos.append({"comando": cmd, "saida": saida})
 
-                        print("\n" + "=" * 60)
-                        print("[ATENÇÃO] Antes de continuar:")
-                        print("  Clique DENTRO do campo de mensagem da IA no navegador.")
-                        print("  O ChatAgent irá digitar a saída do comando automaticamente.")
-                        print("=" * 60)
-                        input("Pressione ENTER quando estiver pronto: ")
+                    msg_cmd = runner.criar_prompt_resultado_comandos(
+                        resultados_comandos, pasta_projeto, user_prompt=user_prompt
+                    )
+                    mensagens_retorno.append(msg_cmd)
 
-                        print("\n[OK] Enviando saída do comando à IA...")
-                        if not browser.enviar_para_uma_aba(msg_cmd):
-                            print("[ERRO] Não foi possível enviar o resultado do comando.")
-                    continue  # volta para aguardar a próxima resposta da IA
-
-                # Leitura de arquivos solicitada
+                # Leitura de arquivos solicitada pela IA
                 if leituras:
                     try:
                         msg_leitura = criar_prompt_leitura(leituras, user_prompt=user_prompt)
-                        with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
-                            f.write(msg_leitura)
+                        mensagens_retorno.append(msg_leitura)
                     except ValueError as e:
                         print(f"[ERRO] {e}")
-                        break
 
-                    print("\n[OK] Enviando conteúdo dos arquivos solicitados à IA...")
-                    if not browser.enviar_para_uma_aba(msg_leitura):
-                        print("[ERRO] Não foi possível enviar os arquivos solicitados.")
-                        break
-                    print("-> Conteúdo enviado. Aguardando nova resposta da IA...")
+                if not mensagens_retorno:
+                    break
+
+                msg_completa = "\n\n".join(mensagens_retorno)
+                with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
+                    f.write(msg_completa)
+
+                print("\n" + "=" * 60)
+                print("[ATENÇÃO] Antes de continuar:")
+                print("  1. Clique DENTRO do campo de mensagem do chat da IA no navegador.")
+                print("  2. Volte a este terminal e pressione ENTER.")
+                print("  O ChatAgent colará a resposta e enviará à IA automaticamente.")
+                print("=" * 60)
+                input("Pressione ENTER quando estiver pronto: ")
+
+                print("\n[OK] Enviando retorno à IA...")
+                if not browser.enviar_para_uma_aba(msg_completa):
+                    print("[ERRO] Não foi possível enviar a mensagem para a IA.")
+                    break
+                print("-> Conteúdo enviado. Aguardando nova resposta da IA...")
 
             print("\nO que deseja fazer agora?")
             print("1. Alterar novamente os mesmos arquivos")
