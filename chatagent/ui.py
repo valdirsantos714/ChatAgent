@@ -5,7 +5,6 @@ import re
 
 from chatagent import files as project_files
 
-
 ARQUIVO_PROMPT = "prompt.txt"
 
 
@@ -13,52 +12,53 @@ def ler_prompt_multilinha() -> str:
     """Lê um bloco de texto multilinha até o delimitador ``--env``.
 
     Para prompts grandes, o usuário pode digitar ``'f'`` ou ``'arquivo'`` para
-    carregar o conteúdo do arquivo ``prompt.txt``, no mesmo estilo do
+    carregar o conteúdo do arquivo ``prompt.txt``, de forma semelhante ao
     ``resposta_ia.txt``.
     """
     print("\n" + "=" * 65)
     print("                    [AGUARDANDO O PROMPT]")
     print("=" * 65)
-    print("Opção 1 – Digitar aqui no terminal:")
+    print("Opção 1 – Digitar ou colar aqui no terminal:")
     print("  Digite ou cole seu prompt abaixo.")
     print("  Para enviar, digite '--env' em uma linha vazia.")
-    print("  Para sair, digite 'sair' e depois '--env'.")
+    print("  Para sair, digite 'sair' em uma linha vazia e depois '--env'.")
     print()
     print("Opção 2 – Via arquivo para prompts grandes:")
     print(f"  1. Salve o prompt dentro do arquivo '{ARQUIVO_PROMPT}'.")
     print("  2. Digite 'f' ou 'arquivo' aqui e pressione ENTER.")
     print("=" * 65)
 
-    primeira_linha = input().strip()
+    primeira_linha = input()
 
-    # Usuário quer usar o arquivo
-    if primeira_linha.lower() in ['f', 'arquivo', 'file', 'txt']:
+    # Opção via arquivo
+    if primeira_linha.strip().lower() in ['f', 'arquivo', 'file', 'txt']:
         caminho_arq = os.path.abspath(ARQUIVO_PROMPT)
         if not os.path.isfile(caminho_arq) or os.path.getsize(caminho_arq) == 0:
             try:
-                open(caminho_arq, 'w', encoding='utf-8').close()
+                with open(caminho_arq, "w", encoding="utf-8") as f:
+                    pass
             except Exception:
                 pass
-            print(f"\n[INFO] Arquivo '{ARQUIVO_PROMPT}' preparado em:\n  {caminho_arq}")
-            print("Salve o seu prompt dentro dele")
-            input("e pressione ENTER aqui para continuar: ")
+            print(f"\n[INFO] O arquivo '{ARQUIVO_PROMPT}' foi preparado.")
+            print(f"Cole o seu prompt dentro dele ({caminho_arq}), salve o arquivo")
+            input("e pressione ENTER aqui no terminal para continuar: ")
 
         try:
-            with open(caminho_arq, 'r', encoding='utf-8-sig') as f:
+            with open(caminho_arq, "r", encoding="utf-8-sig") as f:
                 conteudo = f.read()
             if conteudo.strip():
-                print(f"[OK] {len(conteudo):,} caracteres lidos de '{ARQUIVO_PROMPT}'.")
+                print(f"[OK] {len(conteudo)} caracteres lidos com sucesso de '{ARQUIVO_PROMPT}'.")
                 return conteudo
-            print(f"[AVISO] '{ARQUIVO_PROMPT}' está vazio. Continuando com digitação manual...")
+            print(f"[AVISO] O arquivo '{ARQUIVO_PROMPT}' está vazio. Continuando com digitação manual...")
         except Exception as e:
-            print(f"[ERRO] Não foi possível ler '{ARQUIVO_PROMPT}': {e}. Continuando...")
+            print(f"[ERRO] Não foi possível ler o arquivo '{ARQUIVO_PROMPT}': {e}. Continuando com digitação manual...")
 
-    # Digitação manual: a primeira linha já foi lida, continua o restante
+    # Digitação manual: continua a leitura até '--env'
     linhas: list[str] = []
-    if primeira_linha and primeira_linha.strip() != '--env':
-        linhas.append(primeira_linha)
-
     if primeira_linha.strip() != '--env':
+        if primeira_linha.strip().lower() not in ['f', 'arquivo', 'file', 'txt']:
+            linhas.append(primeira_linha)
+
         while True:
             try:
                 linha = input()
