@@ -1,6 +1,9 @@
 """Modos de operação do ChatAgent."""
 
+import os
+
 from chatagent import browser, files as project_files
+from chatagent import runner
 from chatagent.constants import SITES_IA
 from chatagent.editor import processar_resposta_e_modificar_arquivos
 from chatagent.files import criar_prompt_edicao, criar_prompt_leitura
@@ -155,25 +158,61 @@ def modo_2_edicao_arquivos() -> None:
 
             print("-> Solicitação enviada (salva em 'ultimo_prompt_enviado.txt').")
 
-            # Loop de leitura: reenvia automaticamente enquanto a IA pedir arquivos.
+            # Determina a pasta do projeto para rodar os comandos
+            if project_files.PASTAS_PROJETO_SELECIONADAS:
+                pasta_projeto = project_files.PASTAS_PROJETO_SELECIONADAS[0]
+            elif file_paths:
+                pasta_projeto = os.path.dirname(os.path.abspath(file_paths[0]))
+            else:
+                pasta_projeto = "."
+
+            # Loop de resposta: trata leituras e comandos automaticamente
             while True:
-                arquivos_para_ler = processar_resposta_e_modificar_arquivos(file_paths)
+                leituras, comandos = processar_resposta_e_modificar_arquivos(file_paths)
 
-                if not arquivos_para_ler:
+                if not leituras and not comandos:
                     break
 
-                # Monta e envia o conteúdo dos arquivos solicitados.
-                try:
-                    msg_leitura = criar_prompt_leitura(arquivos_para_ler, user_prompt=user_prompt)
-                    with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
-                        f.write(msg_leitura)
-                except ValueError as e:
-                    print(f"[ERRO] {e}")
+                mensagens_retorno = []
+
+                # Executa os comandos solicitados pela IA
+                if comandos:
+                    resultados_comandos = []
+                    for cmd in comandos:
+                        saida = runner.executar_comando(cmd, pasta_projeto)
+                        resultados_comandos.append({"comando": cmd, "saida": saida})
+
+                    msg_cmd = runner.criar_prompt_resultado_comandos(
+                        resultados_comandos, pasta_projeto, user_prompt=user_prompt
+                    )
+                    mensagens_retorno.append(msg_cmd)
+
+                # Leitura de arquivos solicitada pela IA
+                if leituras:
+                    try:
+                        msg_leitura = criar_prompt_leitura(leituras, user_prompt=user_prompt)
+                        mensagens_retorno.append(msg_leitura)
+                    except ValueError as e:
+                        print(f"[ERRO] {e}")
+
+                if not mensagens_retorno:
                     break
 
-                print("\n[OK] Enviando conteúdo dos arquivos solicitados à IA...")
-                if not browser.enviar_para_uma_aba(msg_leitura):
-                    print("[ERRO] Não foi possível enviar os arquivos solicitados.")
+                msg_completa = "\n\n".join(mensagens_retorno)
+                with open("ultimo_prompt_enviado.txt", "w", encoding="utf-8") as f:
+                    f.write(msg_completa)
+
+                print("\n" + "=" * 60)
+                print("[ATENÇÃO] Antes de continuar:")
+                print("  1. Clique DENTRO do campo de mensagem do chat da IA no navegador.")
+                print("  2. Volte a este terminal e pressione ENTER.")
+                print("  O ChatAgent colará a resposta e enviará à IA automaticamente.")
+                print("=" * 60)
+                input("Pressione ENTER quando estiver pronto: ")
+
+                print("\n[OK] Enviando retorno à IA...")
+                if not browser.enviar_para_uma_aba(msg_completa):
+                    print("[ERRO] Não foi possível enviar a mensagem para a IA.")
                     break
                 print("-> Conteúdo enviado. Aguardando nova resposta da IA...")
 
