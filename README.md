@@ -13,6 +13,7 @@ Em vez de apenas receber respostas e copiar códigos manualmente, a IA pode anal
 - **Capacidades agênticas para IAs no navegador:** a IA recebe o contexto e pode interagir solicitando leituras, executando comandos e propondo modificações concretas.
 - **Execução autônoma de comandos no subprocess (`---> Executar`):** a IA pode solicitar a execução de comandos shell diretamente na pasta do projeto (testes, compilações, migrações, scripts). O ChatAgent executa via subprocess, captura a saída completa (stdout/stderr) e reenvia à IA.
 - **Solicitação dinâmica de leitura (`---> Ler`):** ao enviar uma pasta, a IA recebe a estrutura dos diretórios e pode solicitar a leitura de qualquer arquivo que precise ver antes de codificar. O ChatAgent atende ao pedido e reenvia o conteúdo automaticamente em um loop interativo.
+- **Busca e leitura por Expressões Regulares (`---> Buscar regex`):** a IA pode solicitar a busca de termos, métodos, classes ou trechos específicos via Regex em: (1) um arquivo específico, (2) na pasta do projeto que o usuário passou para modificar, ou (3) em qualquer outra pasta do computador do usuário. O ChatAgent varre os arquivos textuais e retorna as ocorrências com caminhos e números de linha automaticamente.
 - **Edição, criação e exclusão de arquivos e pastas:** suporte a modificação de arquivos existentes no projeto, criação de novos arquivos de código, criação de estruturas de diretórios e deleção segura de arquivos obsoletos (`--> Deletar`).
 - **Limpeza inteligente de cercas Markdown (```` ``` ````):** caso a IA inclua crases markdown no código retornado, o ChatAgent as remove automaticamente em qualquer tipo de arquivo (Java, Python, JS, etc.), preservando-as exclusivamente quando o destino for de fato um documento Markdown (`.md`).
 - **Envio e recebimento de textos gigantescos via arquivo ou memória:**
@@ -40,6 +41,7 @@ ChatAgent/
 │   ├── files.py            # Varredura de pastas, leitura e montagem de prompts
 │   ├── modes.py            # Modos de operação (Multi-IA e Edição de Arquivos)
 │   ├── runner.py           # Execução de comandos no subprocess para a IA
+│   ├── search.py           # Busca e leitura via Regex em arquivos e pastas para a IA
 │   └── ui.py               # Leitura de prompts multilinha e seleção de contexto
 ├── main.py                 # Ponto de entrada da aplicação
 ├── prompt.txt              # Arquivo auxiliar para prompts extensos
@@ -81,6 +83,7 @@ O ChatAgent possui um analisador tolerante e inteligente que reconhece os seguin
 | `--> Criar pasta caminho/da/pasta` | Cria um novo diretório (em linha isolada, sem bloco de código). |
 | `--> Deletar caminho/do/recurso` | Deleta o arquivo ou pasta especificada (pastas são deletadas recursivamente, com confirmação e backup automático). |
 | `---> Ler caminho/do/arquivo` | Solicita ao ChatAgent a leitura do conteúdo do arquivo na próxima iteração. |
+| `---> Buscar regex <padrão> em <caminho>` | Realiza busca por Regex em um arquivo específico, na pasta do projeto ou em qualquer pasta do computador, retornando as linhas encontradas à IA. Se omitido o caminho (`---> Buscar regex <padrão>`), pesquisa na pasta do projeto. |
 | `---> Executar comando shell` | Executa o comando na pasta do projeto via subprocess e reenvia a saída (stdout + stderr) à IA. |
 | `--> Criar caminho/do/recurso` | Cria arquivo (se houver código ou extensão) ou pasta. |
 

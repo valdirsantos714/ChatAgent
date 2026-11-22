@@ -134,9 +134,14 @@ def criar_prompt_edicao(file_paths: list[str], user_prompt: str) -> str:
         '14. Não é necessário retornar marcadores para arquivos que não precisam ser alterados ou deletados.\n'
         '15. Não misture o conteúdo de arquivos diferentes, não invente caminhos e não inclua explicações entre os blocos de código.\n'
         '16. Se precisar ler o conteúdo de um arquivo antes de continuar, escreva ---> Ler seguido do caminho absoluto completo do arquivo em uma linha separada (sem bloco de código). O ChatAgent enviará o conteúdo na próxima mensagem automaticamente. Você pode solicitar vários arquivos de uma vez usando um marcador ---> Ler por linha.\n'
-        '17. NUNCA COLOQUE UM BLOCO DE COMANDO DENTRO DO OUTRO! NUNCA abra um novo ---> código: sem antes ter finalizado o anterior com seu respectivo comando (----> Modificar ou --> Criar arquivo). Comandos como --> Criar pasta, --> Deletar e ---> Ler devem ficar em linhas isoladas e não usam código.\n'
+        '17. NUNCA COLOQUE UM BLOCO DE COMANDO DENTRO DO OUTRO! NUNCA abra um novo ---> código: sem antes ter finalizado o anterior com seu respectivo comando (----> Modificar ou --> Criar arquivo). Comandos como --> Criar pasta, --> Deletar, ---> Ler, ---> Buscar regex e ---> Executar devem ficar em linhas isoladas e não usam código.\n'
         '18. NUNCA coloque barras invertidas de escape (\\) no início ou fim dos comandos nem no fim das linhas de texto/código (NUNCA escreva \\--> Criar arquivo, \\--> Criar pasta, código:\\ ou texto.\\). Escreva comandos e textos de forma limpa e direta.\n'
-        '19. Se precisar executar um comando no projeto antes de continuar (ex: compilar, rodar testes, migrações), escreva ---> Executar seguido do comando exato em uma linha separada (ex: ---> Executar mvn test). O ChatAgent rodará o comando na pasta do projeto e enviará a saída de volta para você automaticamente. Use isso quando necessário para validar suas alterações ou diagnosticar erros.\n\n'
+        '19. Se precisar executar um comando no projeto antes de continuar (ex: compilar, rodar testes, migrações), escreva ---> Executar seguido do comando exato em uma linha separada (ex: ---> Executar mvn test). O ChatAgent rodará o comando na pasta do projeto e enviará a saída de volta para você automaticamente. Use isso quando necessário para validar suas alterações ou diagnosticar erros.\n'
+        '20. Se precisar buscar ou ler trechos de código via EXPRESSÃO REGULAR (REGEX), escreva ---> Buscar regex PADRAO em CAMINHO em uma linha separada (sem bloco de código). Você pode buscar:\n'
+        '    - Em um arquivo específico: ---> Buscar regex def autenticar em D:\\Projeto\\src\\auth.py\n'
+        '    - Na pasta que o usuário passou para modificar: ---> Buscar regex class .*Controller em D:\\Projeto (ou simplesmente ---> Buscar regex class .*Controller)\n'
+        '    - Em qualquer outra pasta do computador: ---> Buscar regex interface Repository em C:\\OutroProjeto\\src\n'
+        '    O ChatAgent executará a busca regex em todos os arquivos textuais do alvo, retornando as ocorrências, arquivos e números de linha para você. Você pode solicitar várias buscas de uma vez (uma por linha).\n\n'
     )
 
     estrutura = '\n\n'.join(partes_estrutura)
@@ -223,12 +228,14 @@ def criar_prompt_leitura(caminhos_solicitados: list[str], user_prompt: str = '')
         '   --> Deletar CAMINHO_ABSOLUTO_DO_RECURSO\n'
         '6. Se ainda precisar ler outros arquivos antes de implementar:\n'
         '   ---> Ler CAMINHO_ABSOLUTO_DO_ARQUIVO\n'
-        '7. PROIBIDO o uso de cercas Markdown (```). Coloque o código puro diretamente após ---> código:, exceto se o arquivo destino for Markdown (.md). Para qualquer outro tipo de arquivo, JAMAIS use ```.\n'
-        '8. Não coloque comentários ou explicações entre os códigos.\n'
-        '9. NUNCA COLOQUE UM BLOCO DE COMANDO DENTRO DO OUTRO! Finalize cada arquivo completamente com seu comando (----> Modificar ou --> Criar arquivo) antes de iniciar outro ---> código:. Comandos como --> Criar pasta, --> Deletar e ---> Ler não usam bloco de código.\n'
-        '10. IMPORTANTE: Use sempre o caminho absoluto real e exato do arquivo (por exemplo D:\\Projeto\\src\\Arquivo.java). NUNCA invente ou escreva textos literais como <caminho>.\n'
-        '11. NUNCA use barras invertidas de escape (\\) no início ou fim dos comandos nem no fim das linhas de texto ou código.\n'
-        '12. Se precisar executar um comando no projeto antes de continuar (ex: compilar, rodar testes, migrações), escreva ---> Executar seguido do comando em uma linha separada (ex: ---> Executar mvn test). O ChatAgent rodará o comando na pasta do projeto e enviará a saída para você automaticamente.\n'
+        '7. Se precisar buscar termos ou métodos via Expressão Regular (Regex) em um arquivo, na pasta do projeto ou em outra pasta do computador:\n'
+        '   ---> Buscar regex PADRAO em CAMINHO (ou apenas ---> Buscar regex PADRAO para a pasta do projeto)\n'
+        '8. PROIBIDO o uso de cercas Markdown (```). Coloque o código puro diretamente após ---> código:, exceto se o arquivo destino for Markdown (.md). Para qualquer outro tipo de arquivo, JAMAIS use ```.\n'
+        '9. Não coloque comentários ou explicações entre os códigos.\n'
+        '10. NUNCA COLOQUE UM BLOCO DE COMANDO DENTRO DO OUTRO! Finalize cada arquivo completamente com seu comando (----> Modificar ou --> Criar arquivo) antes de iniciar outro ---> código:. Comandos como --> Criar pasta, --> Deletar, ---> Ler, ---> Buscar regex e ---> Executar não usam bloco de código.\n'
+        '11. IMPORTANTE: Use sempre o caminho absoluto real e exato do arquivo (por exemplo D:\\Projeto\\src\\Arquivo.java). NUNCA invente ou escreva textos literais como <caminho>.\n'
+        '12. NUNCA use barras invertidas de escape (\\) no início ou fim dos comandos nem no fim das linhas de texto ou código.\n'
+        '13. Se precisar executar um comando no projeto antes de continuar (ex: compilar, rodar testes, migrações), escreva ---> Executar seguido do comando em uma linha separada (ex: ---> Executar mvn test). O ChatAgent rodará o comando na pasta do projeto e enviará a saída para você automaticamente.\n'
         '======================================================================'
     )
 
@@ -248,7 +255,7 @@ def criar_prompt_leitura(caminhos_solicitados: list[str], user_prompt: str = '')
         '======================================================================\n'
         'LEMBRETE OBRIGATÓRIO FINAL:\n'
         'Com base nos conteúdos acima e na solicitação do usuário, responda AGORA\n'
-        'obrigatoriamente utilizando os comandos (---> código:, ----> Modificar, --> Criar arquivo, --> Criar pasta, --> Deletar ou ---> Ler).\n'
+        'obrigatoriamente utilizando os comandos (---> código:, ----> Modificar, --> Criar arquivo, --> Criar pasta, --> Deletar, ---> Ler ou ---> Buscar regex).\n'
         'NÃO envie resposta em texto livre sem os comandos!\n'
         '======================================================================'
     )

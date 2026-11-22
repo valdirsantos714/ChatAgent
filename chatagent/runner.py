@@ -94,7 +94,7 @@ def criar_prompt_resultado_comandos(
         "Com base no resultado da execução acima, continue sua análise e",
         "responda usando os comandos obrigatórios do ChatAgent (---> código:,",
         "----> Modificar, --> Criar arquivo, --> Criar pasta, --> Deletar,",
-        "---> Ler, ---> Executar) conforme necessário.",
+        "---> Ler, ---> Buscar regex, ---> Executar) conforme necessário.",
         "======================================================================",
     ])
 

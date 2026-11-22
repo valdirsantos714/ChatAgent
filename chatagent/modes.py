@@ -3,7 +3,7 @@
 import os
 
 from chatagent import browser, files as project_files
-from chatagent import runner
+from chatagent import runner, search
 from chatagent.constants import SITES_IA
 from chatagent.editor import processar_resposta_e_modificar_arquivos
 from chatagent.files import criar_prompt_edicao, criar_prompt_leitura
@@ -166,11 +166,11 @@ def modo_2_edicao_arquivos() -> None:
             else:
                 pasta_projeto = "."
 
-            # Loop de resposta: trata leituras e comandos automaticamente
+            # Loop de resposta: trata leituras, comandos e buscas regex automaticamente
             while True:
-                leituras, comandos = processar_resposta_e_modificar_arquivos(file_paths)
+                leituras, comandos, buscas_regex = processar_resposta_e_modificar_arquivos(file_paths)
 
-                if not leituras and not comandos:
+                if not leituras and not comandos and not buscas_regex:
                     break
 
                 mensagens_retorno = []
@@ -187,13 +187,22 @@ def modo_2_edicao_arquivos() -> None:
                     )
                     mensagens_retorno.append(msg_cmd)
 
-                # Leitura de arquivos solicitada pela IA
+                # Leitura integral de arquivos solicitada pela IA
                 if leituras:
                     try:
                         msg_leitura = criar_prompt_leitura(leituras, user_prompt=user_prompt)
                         mensagens_retorno.append(msg_leitura)
                     except ValueError as e:
                         print(f"[ERRO] {e}")
+
+                # Leitura e busca por regex solicitada pela IA
+                if buscas_regex:
+                    try:
+                        resultados_regex = search.executar_buscas_regex(buscas_regex, pasta_padrao=pasta_projeto)
+                        msg_regex = search.criar_prompt_resultado_regex(resultados_regex, user_prompt=user_prompt)
+                        mensagens_retorno.append(msg_regex)
+                    except Exception as e:
+                        print(f"[ERRO] Falha ao executar busca por regex: {e}")
 
                 if not mensagens_retorno:
                     break
