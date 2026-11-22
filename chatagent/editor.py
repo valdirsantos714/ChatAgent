@@ -7,6 +7,7 @@ import shutil
 import pyperclip
 
 from chatagent import files as project_files
+from chatagent.search import extrair_padrao_e_caminho_regex
 
 
 def chave_caminho(caminho: str) -> str:
@@ -25,6 +26,11 @@ PADRAO_MARCADOR = re.compile(
 # Detecta ---> Executar <comando shell>, tolerando "comando", "script", etc.
 PADRAO_EXECUTAR = re.compile(
     r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?Executar(?:\s+(?:comando|script|shell))?\s*\*?:?\s+(.+?)\s*(?:-->)?$',
+    re.IGNORECASE
+)
+# Detecta ---> Buscar regex <padrao> em <caminho>, tolerando variações como Ler regex, Pesquisar regex, etc.
+PADRAO_BUSCA_REGEX = re.compile(
+    r'^(?:[\s/\\#*>\-]|<!--)*-{2,5}>\s*\*?(?:Buscar\s+regex|Ler\s+regex|Pesquisar\s+regex|Procurar\s+regex|Regex|Buscar\s+por\s+regex)\s*\*?:?\s+(.+?)\s*(?:-->)?$',
     re.IGNORECASE
 )
 
@@ -146,9 +152,9 @@ def eh_caminho_placeholder(caminho: str) -> bool:
     return False
 
 
-def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str], list[str]]:
+def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str], list[str], list[dict]]:
     """
-    Interpreta marcadores de modificação, criação, deleção, leitura e execução na resposta da IA.
+    Interpreta marcadores de modificação, criação, deleção, leitura, busca regex e execução na resposta da IA.
 
     Suporta:
     - Criação explícita de arquivos: ``--> Criar arquivo <caminho>``
@@ -157,18 +163,21 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str], li
     - Modificação: ``----> Modificar <caminho>``
     - Deleção: ``--> Deletar arquivo/pasta <caminho>``
     - Leitura: ``---> Ler <caminho>``
+    - Busca via Regex: ``---> Buscar regex <padrao> em <caminho>``
     - Execução: ``---> Executar <comando shell>``
     - Marcadores antes ou depois do código, variações de prefixo (#, //, *, etc.).
 
-    Retorna uma tupla ``(acoes, leituras, comandos)`` onde:
-    - ``acoes``    é a lista de ações a aplicar nos arquivos do projeto.
-    - ``leituras`` é a lista de caminhos de arquivo que a IA solicitou ler.
-    - ``comandos`` é a lista de comandos shell que a IA solicitou executar.
+    Retorna uma tupla ``(acoes, leituras, comandos, buscas_regex)`` onde:
+    - ``acoes``        é a lista de ações a aplicar nos arquivos do projeto.
+    - ``leituras``     é a lista de caminhos de arquivo que a IA solicitou ler integralmente.
+    - ``comandos``     é a lista de comandos shell que a IA solicitou executar.
+    - ``buscas_regex`` é a lista de buscas regex solicitadas pela IA (``{'padrao': str, 'caminho': str | None}``).
     """
     linhas = texto_resposta.splitlines()
     acoes: list[dict] = []
     leituras: list[str] = []
     comandos: list[str] = []
+    buscas_regex: list[dict] = []
     codigo_atual = False
     linhas_codigo: list[str] = []
     linhas_buffer: list[str] = []
@@ -254,6 +263,20 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str], li
             cmd = re.sub(r'^(?:comando|script|shell)\s*:\s*', '', cmd, flags=re.IGNORECASE).strip()
             if cmd:
                 comandos.append(cmd)
+            continue
+
+        # Verifica se é busca por regex: ---> Buscar regex <padrao> em <caminho>
+        correspondencia_regex = PADRAO_BUSCA_REGEX.match(linha_limpa)
+        if correspondencia_regex:
+            if codigo_atual:
+                fechar_bloco_codigo(linhas_codigo, comando_pendente)
+                codigo_atual = False
+                linhas_codigo = []
+                comando_pendente = None
+            corpo = correspondencia_regex.group(1).strip()
+            padrao, caminho = extrair_padrao_e_caminho_regex(corpo)
+            if padrao:
+                buscas_regex.append({'padrao': padrao, 'caminho': caminho})
             continue
 
         # Verifica se é marcador de comando ou leitura
@@ -402,10 +425,10 @@ def interpretar_resposta(texto_resposta: str) -> tuple[list[dict], list[str], li
             })
         comando_pendente = None
 
-    if not acoes and not leituras and not comandos:
-        raise ValueError("Nenhuma ação ou solicitação de leitura/execução válida foi encontrada na resposta.")
+    if not acoes and not leituras and not comandos and not buscas_regex:
+        raise ValueError("Nenhuma ação ou solicitação de leitura/execução/busca válida foi encontrada na resposta.")
 
-    return acoes, leituras, comandos
+    return acoes, leituras, comandos, buscas_regex
 
 
 def validar_acoes(acoes: list[dict], file_paths: list[str]) -> None:
@@ -761,27 +784,28 @@ def obter_resposta_da_ia() -> str:
     return ""
 
 
-def processar_resposta_e_modificar_arquivos(file_paths: list[str]) -> tuple[list[str], list[str]]:
+def processar_resposta_e_modificar_arquivos(file_paths: list[str]) -> tuple[list[str], list[str], list[dict]]:
     """
     Lê a resposta copiada da área de transferência ou arquivo e aplica as ações validadas.
 
-    Retorna uma tupla ``(leituras, comandos)`` onde:
-    - ``leituras``  é a lista de caminhos que a IA solicitou ler via ``---> Ler``.
-    - ``comandos``  é a lista de comandos shell que a IA solicitou executar via ``---> Executar``.
+    Retorna uma tupla ``(leituras, comandos, buscas_regex)`` onde:
+    - ``leituras``     é a lista de caminhos que a IA solicitou ler via ``---> Ler``.
+    - ``comandos``     é a lista de comandos shell que a IA solicitou executar via ``---> Executar``.
+    - ``buscas_regex`` é a lista de buscas regex solicitadas via ``---> Buscar regex``.
     Listas vazias indicam que não há pedidos pendentes.
     """
     texto_resposta = obter_resposta_da_ia()
 
     if not texto_resposta or not texto_resposta.strip():
         print("Operação cancelada ou nenhuma resposta recebida.")
-        return [], []
+        return [], [], []
 
     try:
-        acoes, leituras, comandos = interpretar_resposta(texto_resposta)
+        acoes, leituras, comandos, buscas_regex = interpretar_resposta(texto_resposta)
     except ValueError as e:
         print(f"\n[ERRO] Resposta inválida: {e}")
         print("Nenhuma ação foi executada.")
-        return [], []
+        return [], [], []
 
     if acoes:
         try:
@@ -802,4 +826,10 @@ def processar_resposta_e_modificar_arquivos(file_paths: list[str]) -> tuple[list
         for cmd in comandos:
             print(f"  - {cmd}")
 
-    return leituras, comandos
+    if buscas_regex:
+        print("\n[BUSCA REGEX] A IA solicitou as seguintes buscas por expressão regular:")
+        for b in buscas_regex:
+            alvo_desc = b['caminho'] if b['caminho'] else "(pasta do projeto)"
+            print(f"  - Padrão: '{b['padrao']}' em: {alvo_desc}")
+
+    return leituras, comandos, buscas_regex
